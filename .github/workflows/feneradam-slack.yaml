@@ -14,11 +14,17 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Build
+    - name: Install feneradam
       uses: actions/setup-go@v2
       with:
         go-version: '1.17.3'
     - run:  go install ./feneradam
+
+    - name: Install slack-send
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.17.3'
+    - run:  go install ./slack-send
 
     - name: Feneradam
       id: feneradam
@@ -36,10 +42,8 @@ jobs:
 
     - name: Ping Slack
       if: ${{ steps.feneradam.outputs.message != '' }}
-      uses: abinoda/slack-action@v1.0.9
+      run: |
+        echo "${{ steps.feneradam.outputs.message }}" | slack-send
       env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-      with:
-        args: |
-          '{ "text": "Feneradam Traffic Report", "blocks": [ { "type": "section", "text": { "type": "mrkdwn", "text": "${{ steps.feneradam.outputs.message}}" } } ], "channel" : "${{ secrets.SLACK_CHANNEL_ID }}" }'
-
+        SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+        SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
