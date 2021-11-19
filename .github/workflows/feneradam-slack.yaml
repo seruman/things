@@ -41,17 +41,5 @@ jobs:
         SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       with:
         args: |
-          '{
-              "text": "Feneradam Traffic Report",
-              "blocks": [
-                  {
-                      "type": "section",
-                      "text": {
-                          "type": "mrkdwn",
-                          "text": "${{ steps.feneradam.outputs.message}}"
-                      }
-                  }
-              ],
-              "channel" : "${{ secrets.SLACK_CHANNEL_ID }}"
-          }'
+          '{ "text": "Feneradam Traffic Report", "blocks": [ { "type": "section", "text": { "type": "mrkdwn", "text": "${{ steps.feneradam.outputs.message}}" } } ], "channel" : "${{ secrets.SLACK_CHANNEL_ID }}" }'
 
