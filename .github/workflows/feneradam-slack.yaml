@@ -36,7 +36,7 @@ jobs:
 
     - name: Ping Slack
       if: ${{ steps.feneradam.outputs.message != '' }}
-      uses: abinoda/slack-action@v1.0.7
+      uses: abinoda/slack-action@v1.0.9
       env:
         SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       with:
