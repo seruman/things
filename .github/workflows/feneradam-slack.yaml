@@ -2,6 +2,12 @@ name: feneradam-slack
 on:
   schedule:
     - cron: '00 12 * * *'
+  workflow_dispatch:
+    inputs:
+      feneradam_args:
+        required: false
+        default: '-all'
+        description: Arguments to pass 'feneradam'
 jobs:
   notify-slack:
     runs-on: ubuntu-latest
@@ -15,10 +21,11 @@ jobs:
     - run:  go install ./feneradam
 
     - name: Feneradam
-      # run: echo "test"
       id: feneradam
+      env:
+        DEFAULT_ARGS: ''
       run: |
-        output=$(feneradam)
+        output=$(feneradam ${{  github.event.inputs.feneradam_args || env.DEFAULT_ARGS }})
         output="${output//'%'/'%25'}"
         output="${output//$'\n'/'%0A'}"
         output="${output//$'\r'/'%0D'}"
