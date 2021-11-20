@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-	fmt.Println(os.Args)
 	if err := realMain(os.Args, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
@@ -29,8 +28,6 @@ func realMain(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-
-	fmt.Println(*flagToken)
 
 	if *flagToken == "" {
 		return fmt.Errorf("token is required")
