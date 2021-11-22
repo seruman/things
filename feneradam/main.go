@@ -76,7 +76,7 @@ func realMain(args []string, stdout io.Writer) error {
 
 const (
 	calendarURL       = "https://ics.fixtur.es/v2/home/fenerbahce.ics"
-	defaultOutputTmpl = `🐤 *Traffic within {{ .Duration }} hours!*
+	defaultOutputTmpl = `🐤 *Traffic within {{ .Duration }}!*
 {{ range $val := .Matches -}}
 *@{{ $val.When }}* with {{ $val.Away }}
 {{ end }}`
