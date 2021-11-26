@@ -1,7 +1,7 @@
 name: feneradam-slack
 on:
   schedule:
-    - cron: '00 12 * * *'
+    - cron: '00 12 * * 1-5'
   workflow_dispatch:
     inputs:
       feneradam_args:
