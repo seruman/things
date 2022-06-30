@@ -26,7 +26,12 @@ func realMain(ctx context.Context, args ...string) error {
 		Name:      "target",
 		ShortHelp: "Prints Zig target for GOOS/GOARCH or ZIGTARGET environment variables.",
 		Exec: func(_ context.Context, _ []string) error {
-			fmt.Println(target())
+			ztarget, err := target()
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(ztarget)
 			return nil
 		},
 	}
