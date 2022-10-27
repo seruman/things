@@ -1,6 +1,6 @@
 module github.com/seruman/things
 
-go 1.17
+go 1.19
 
 require (
 	github.com/apognu/gocal v0.9.0
@@ -17,6 +17,8 @@ require (
 	golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6 // indirect
 	gotest.tools/v3 v3.0.3
 )
+
+require github.com/mergestat/timediff v0.0.3
 
 require (
 	github.com/ChannelMeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61 // indirect

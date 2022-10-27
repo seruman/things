@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/apognu/gocal"
+	"github.com/mergestat/timediff"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func realMain(args []string, stdout io.Writer) error {
 
 	flagAll := flags.Bool("all", false, "")
 	flagIstanbulTime := flags.Bool("istanbul-time", true, "")
+	flagDuration := flags.Duration("within-next", 8*time.Hour, "")
 	flagOut := flags.String("out", defaultOutputTmpl, "")
 
 	err := flags.Parse(args[1:])
@@ -35,13 +37,16 @@ func realMain(args []string, stdout io.Writer) error {
 	}
 
 	start := time.Now().UTC()
-	end := start.Add(24 * time.Hour)
+	end := start.Add(*flagDuration)
 
 	if *flagAll {
 		end = start.Add(365 * 24 * time.Hour)
 	}
 
 	matches, err := homeMatches(start, end)
+	if err != nil {
+		return err
+	}
 
 	if len(matches) == 0 {
 		return nil
@@ -61,10 +66,10 @@ func realMain(args []string, stdout io.Writer) error {
 
 	data := struct {
 		Matches  []*match
-		Duration time.Duration
+		Duration string
 	}{
 		Matches:  matches,
-		Duration: end.Sub(start),
+		Duration: timediff.TimeDiff(end, timediff.WithStartTime(start)),
 	}
 	err = tmpl.Execute(os.Stdout, data)
 	if err != nil {
@@ -76,7 +81,7 @@ func realMain(args []string, stdout io.Writer) error {
 
 const (
 	calendarURL       = "https://ics.fixtur.es/v2/home/fenerbahce.ics"
-	defaultOutputTmpl = `🐤 *Traffic within {{ .Duration }}!*
+	defaultOutputTmpl = `🐤 *Traffic {{ .Duration }}!*
 {{ range $val := .Matches -}}
 *@{{ $val.When }}* with {{ $val.Away }}
 {{ end }}`
@@ -96,7 +101,7 @@ func (m *match) When() string {
 func homeMatches(start, end time.Time) ([]*match, error) {
 	calendar, err := fetchCalendar()
 	if err != nil {
-		return nil, fmt.Errorf("matches-within: %w", err)
+		return nil, fmt.Errorf("home-matches: %w", err)
 	}
 
 	cal := gocal.NewParser(calendar)
@@ -105,7 +110,7 @@ func homeMatches(start, end time.Time) ([]*match, error) {
 
 	err = cal.Parse()
 	if err != nil {
-		return nil, fmt.Errorf("matches-within: calendar-parse: %w", err)
+		return nil, fmt.Errorf("home-matches: calendar-parse: %w", err)
 	}
 
 	var matches []*match
