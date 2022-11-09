@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/apognu/gocal"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/mergestat/timediff"
 )
 
@@ -123,7 +124,10 @@ func homeMatches(start, end time.Time) ([]*match, error) {
 }
 
 func fetchCalendar() (*bytes.Reader, error) {
-	resp, err := http.Get(calendarURL)
+	httpclient := retryablehttp.NewClient()
+	httpclient.Logger = nil
+
+	resp, err := httpclient.Get(calendarURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch-calendar: request: %w", err)
 	}

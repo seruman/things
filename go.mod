@@ -18,10 +18,14 @@ require (
 	gotest.tools/v3 v3.0.3
 )
 
-require github.com/mergestat/timediff v0.0.3
+require (
+	github.com/hashicorp/go-retryablehttp v0.7.1
+	github.com/mergestat/timediff v0.0.3
+)
 
 require (
 	github.com/ChannelMeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c // indirect
 )
