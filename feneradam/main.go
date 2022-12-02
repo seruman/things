@@ -15,6 +15,7 @@ import (
 	"github.com/apognu/gocal"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/mergestat/timediff"
+	"golang.org/x/exp/slog"
 )
 
 func main() {
@@ -125,7 +126,8 @@ func homeMatches(start, end time.Time) ([]*match, error) {
 
 func fetchCalendar() (*bytes.Reader, error) {
 	httpclient := retryablehttp.NewClient()
-	httpclient.Logger = nil
+	httpclient.RetryWaitMax = 5 * time.Minute
+	httpclient.Logger = newSlogAdapter(slog.DebugLevel)
 
 	resp, err := httpclient.Get(calendarURL)
 	if err != nil {
@@ -149,4 +151,35 @@ func summary(s string) (string, string) {
 	parts := strings.Split(s, " - ")
 
 	return parts[0], parts[1]
+}
+
+type slogAdapter struct {
+	*slog.Logger
+}
+
+var _ retryablehttp.LeveledLogger = (*slogAdapter)(nil)
+
+func newSlogAdapter(level slog.Level) *slogAdapter {
+	handleropts := slog.HandlerOptions{
+		Level: level,
+	}
+
+	logger := slog.New(handleropts.NewTextHandler(os.Stdout))
+	return &slogAdapter{logger}
+}
+
+func (r *slogAdapter) Error(msg string, keysAndValues ...interface{}) {
+	r.Logger.Error(msg, nil, keysAndValues...)
+}
+
+func (r *slogAdapter) Info(msg string, keysAndValues ...interface{}) {
+	r.Logger.Info(msg, keysAndValues...)
+}
+
+func (r *slogAdapter) Debug(msg string, keysAndValues ...interface{}) {
+	r.Logger.Debug(msg, keysAndValues...)
+}
+
+func (r *slogAdapter) Warn(msg string, keysAndValues ...interface{}) {
+	r.Logger.Warn(msg, keysAndValues...)
 }
