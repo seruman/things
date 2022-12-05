@@ -21,6 +21,7 @@ require (
 require (
 	github.com/hashicorp/go-retryablehttp v0.7.1
 	github.com/mergestat/timediff v0.0.3
+	github.com/oklog/ulid/v2 v2.1.0
 	golang.org/x/exp v0.0.0-20221126150942-6ab00d035af9
 )
 
