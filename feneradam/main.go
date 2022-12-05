@@ -82,7 +82,7 @@ func realMain(args []string, stdout io.Writer) error {
 }
 
 const (
-	calendarURL       = "https://ics.fixtur.es/v2/home/fenerbahce.ics"
+	calendarURL       = "http://ics.fixtur.es/v2/home/fenerbahce.ics"
 	defaultOutputTmpl = `🐤 *Traffic {{ .Duration }}!*
 {{ range $val := .Matches -}}
 *@{{ $val.When }}* with {{ $val.Away }}
