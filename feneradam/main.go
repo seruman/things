@@ -164,7 +164,7 @@ func newSlogAdapter(level slog.Level) *slogAdapter {
 		Level: level,
 	}
 
-	logger := slog.New(handleropts.NewTextHandler(os.Stdout))
+	logger := slog.New(handleropts.NewTextHandler(os.Stderr))
 	return &slogAdapter{logger}
 }
 
