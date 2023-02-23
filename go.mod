@@ -19,7 +19,9 @@ require (
 )
 
 require (
+	github.com/google/uuid v1.3.0
 	github.com/hashicorp/go-retryablehttp v0.7.1
+	github.com/ijt/go-anytime v1.9.2
 	github.com/mergestat/timediff v0.0.3
 	github.com/oklog/ulid/v2 v2.1.0
 	golang.org/x/exp v0.0.0-20221126150942-6ab00d035af9
@@ -29,5 +31,6 @@ require (
 	github.com/ChannelMeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
+	github.com/ijt/goparsify v0.0.0-20221203142333-3a5276334b8d // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c // indirect
 )
