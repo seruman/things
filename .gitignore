@@ -5,3 +5,5 @@ docker-desktop/docker-desktop
 zgo/zgo
 urlparse/urlparse
 gulid/gulid
+gotime/gotime
+uuid/uuid
