@@ -24,6 +24,9 @@ func realMain(args []string, stdin io.Reader, stdout io.Writer) error {
 	flagToken := flags.String("token", os.Getenv("SLACK_TOKEN"), "Slack auth token.")
 	flagChannel := flags.String("channel", os.Getenv("SLACK_CHANNEL"), "Slack channel to send message.")
 	flagBlocks := flags.Bool("blocks", false, "Read message as 'blocks' JSON")
+	flagUsername := flags.String("username", "", "Username to send message.")
+	flagIconEmoji := flags.String("icon-emoji", "", "Icon emoji to send message.")
+
 	err := flags.Parse(args[1:])
 	if err != nil {
 		return err
@@ -52,10 +55,22 @@ func realMain(args []string, stdin io.Reader, stdout io.Writer) error {
 		msgOption = slack.MsgOptionBlocks(blocks.BlockSet...)
 	}
 
+	options := []slack.MsgOption{
+		msgOption,
+	}
+
+	if *flagUsername != "" {
+		options = append(options, slack.MsgOptionUsername(*flagUsername))
+	}
+
+	if *flagIconEmoji != "" {
+		options = append(options, slack.MsgOptionIconEmoji(*flagIconEmoji))
+	}
+
 	client := slack.New(*flagToken)
 	_, _, err = client.PostMessage(
 		*flagChannel,
-		msgOption,
+		options...,
 	)
 	if err != nil {
 		return err
