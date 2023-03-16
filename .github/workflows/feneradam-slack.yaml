@@ -43,7 +43,7 @@ jobs:
     - name: Ping Slack
       if: ${{ steps.feneradam.outputs.message != '' }}
       run: |
-        echo "${{ steps.feneradam.outputs.message }}" | slack-send
+        echo "${{ steps.feneradam.outputs.message }}" | slack-send --username feneradam --icon-emoji ':fenerli:'
       env:
         SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
         SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
