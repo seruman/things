@@ -66,11 +66,24 @@ func realMain(args []string, stdout io.Writer) error {
 		return fmt.Errorf("output: parse: %w", err)
 	}
 
+	type matchInfo struct {
+		match
+		Duration string
+	}
+
+	matchInfos := make([]matchInfo, len(matches))
+	for i, match := range matches {
+		matchInfos[i] = matchInfo{
+			match:    *match,
+			Duration: timediff.TimeDiff(match.Start, timediff.WithStartTime(start)),
+		}
+	}
+
 	data := struct {
-		Matches  []*match
+		Matches  []matchInfo
 		Duration string
 	}{
-		Matches:  matches,
+		Matches:  matchInfos,
 		Duration: timediff.TimeDiff(end, timediff.WithStartTime(start)),
 	}
 	err = tmpl.Execute(os.Stdout, data)
@@ -85,7 +98,7 @@ const (
 	calendarURL       = "http://ics.fixtur.es/v2/home/fenerbahce.ics"
 	defaultOutputTmpl = `🐤 *Traffic {{ .Duration }}!*
 {{ range $val := .Matches -}}
-*@{{ $val.When }}* with {{ $val.Away }}
+*@{{ $val.When }}* with {{ $val.Away }} - _*{{ $val.Duration }}*_
 {{ end }}`
 )
 
@@ -127,12 +140,19 @@ func homeMatches(start, end time.Time) ([]*match, error) {
 func fetchCalendar() (*bytes.Reader, error) {
 	httpclient := retryablehttp.NewClient()
 	httpclient.RetryWaitMax = 5 * time.Minute
+	httpclient.HTTPClient.Timeout = 5 * time.Minute
 	httpclient.Logger = newSlogAdapter(slog.DebugLevel)
 
-	resp, err := httpclient.Get(calendarURL)
+	req, err := retryablehttp.NewRequest(http.MethodGet, calendarURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("fetch-calendar: request: %w", err)
 	}
+
+	resp, err := httpclient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch-calendar: response: %w", err)
+	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
