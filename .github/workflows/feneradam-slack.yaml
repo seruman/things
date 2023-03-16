@@ -6,7 +6,7 @@ on:
     inputs:
       feneradam_args:
         required: false
-        default: '-all'
+        default: ''
         description: Arguments to pass 'feneradam'
 jobs:
   notify-slack:
