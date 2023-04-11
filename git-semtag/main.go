@@ -99,10 +99,12 @@ func realMain(
 	}
 
 	for _, v := range versions {
-		vs := colorRelease.Sprint(v.String())
+		color := colorRelease
 		if v.Prerelease() != "" {
-			vs = colorPreRelease.Sprint(v.String())
+			color = colorPreRelease
 		}
+
+		vs := color.Sprintf("%v", v.Original())
 
 		fmt.Fprintln(stdout, vs)
 
