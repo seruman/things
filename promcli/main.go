@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -47,9 +48,19 @@ func realMain(
 	_ = exec
 	_ = args
 
+	flagset := flag.NewFlagSet(exec, flag.ExitOnError)
+	flagAddr := flagset.String("addr", "http://localhost:9090", "Prometheus address")
+
+	err := flagset.Parse(args)
+	if err != nil {
+		return err
+	}
+
+	flagargs := flagset.Args()
+
 	// TODO(selman):
-	query := args[0]
-	addr := os.Getenv("PROMETHEUS_ADDR")
+	query := flagargs[0]
+	addr := *flagAddr
 
 	client, err := promapi.NewClient(
 		promapi.Config{
@@ -149,7 +160,6 @@ func realMain(
 	graph := asciigraph.PlotMany(
 		data,
 		asciigraph.Caption(query),
-		// asciigraph.Precision(0),
 		asciigraph.SeriesColors(colors...),
 		asciigraph.Height(termheight/5),
 		asciigraph.Width(termwidth-8),
