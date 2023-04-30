@@ -15,8 +15,10 @@ import (
 
 	"github.com/guptarohit/asciigraph"
 	"github.com/mattn/go-isatty"
+	"github.com/peterbourgon/ff/v3"
 	promapi "github.com/prometheus/client_golang/api"
 	promapiv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	promconfig "github.com/prometheus/common/config"
 	prommodel "github.com/prometheus/common/model"
 
 	"github.com/muesli/termenv"
@@ -50,8 +52,10 @@ func realMain(
 
 	flagset := flag.NewFlagSet(exec, flag.ExitOnError)
 	flagAddr := flagset.String("addr", "http://localhost:9090", "Prometheus address")
+	flagUser := flagset.String("user", "", "User for basic auth")
+	flagPassword := flagset.String("passwd", "", "Password for basic auth")
 
-	err := flagset.Parse(args)
+	err := ff.Parse(flagset, os.Args[1:], ff.WithEnvVarPrefix("PROMCLI"))
 	if err != nil {
 		return err
 	}
@@ -62,11 +66,20 @@ func realMain(
 	query := flagargs[0]
 	addr := *flagAddr
 
+	var rtt http.RoundTripper = http.DefaultTransport
+	if *flagUser != "" && *flagPassword != "" {
+		rtt = promconfig.NewBasicAuthRoundTripper(
+			*flagUser,
+			promconfig.Secret(*flagPassword),
+			"",
+			rtt,
+		)
+	}
 	client, err := promapi.NewClient(
 		promapi.Config{
 			Address: addr,
 			RoundTripper: &loggingRoundTripper{
-				roundTripper: http.DefaultTransport,
+				roundTripper: rtt,
 			},
 		},
 	)
