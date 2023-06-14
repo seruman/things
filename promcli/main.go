@@ -129,25 +129,25 @@ func realMain(
 	// TODO(selman): Order of colors lost, re-runs are not consistent.
 	allColors := maps.Values(asciigraph.ColorNames)
 
-	// TODO(selman): This is 🤢. Find a better way.
-	// Also, is there a way to eliminate bright colors those not seen well with
-	// the background?
-	var bgcolor asciigraph.AnsiColor
-	var bgok bool
-	switch c := termenv.BackgroundColor().(type) {
-	case termenv.ANSIColor:
-		bgcolor = asciigraph.AnsiColor(int(c))
-		bgok = true
-	case termenv.ANSI256Color:
-		bgcolor = asciigraph.AnsiColor(int(c))
-		bgok = true
-	}
-
-	if bgok {
-		allColors = SliceFilter(allColors, func(color asciigraph.AnsiColor) bool {
-			return color != bgcolor
+	filterColors := func(colors []asciigraph.AnsiColor) []asciigraph.AnsiColor {
+		bgcolor := termenv.BackgroundColor()
+		fmt.Printf("ANSI: %q", termenv.ANSI.Convert(bgcolor))
+		sekans := bgcolor.Sequence(false)
+		return SliceFilter(colors, func(color asciigraph.AnsiColor) bool {
+			fmt.Printf("SEKANS: %q, AG: %q, result: %v\n", sekans, fmt.Sprintf("%d", color), sekans == fmt.Sprintf("%d", color))
+			return true
 		})
 	}
+
+	fmt.Println("filtering colors")
+	filterColors(allColors)
+	// // TODO(selman): This is 🤢. Find a better way.
+	// // Also, is there a way to eliminate bright colors those not seen well with
+	// // the background?
+	// bgcolor := termenv.BackgroundColor()
+	// allColors = SliceFilter(allColors, func(color asciigraph.AnsiColor) bool {
+	// 	return color != asciigraph.AnsiColor(int(bgcolor))
+	// })
 
 	data := make([][]float64, len(result))
 	colors := make([]asciigraph.AnsiColor, len(result))
