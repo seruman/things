@@ -51,6 +51,7 @@ func realMain(
 	_ = args
 
 	flagset := flag.NewFlagSet(exec, flag.ExitOnError)
+	flagDuration := flagset.Duration("duration", 1*time.Hour*24, "Duration to query")
 	flagAddr := flagset.String("addr", "http://localhost:9090", "Prometheus address")
 	flagUser := flagset.String("user", "", "User for basic auth")
 	flagPassword := flagset.String("passwd", "", "Password for basic auth")
@@ -89,7 +90,7 @@ func realMain(
 	api := promapiv1.NewAPI(client)
 
 	now := time.Now()
-	const duration = 7 * 24 * time.Hour
+	duration := *flagDuration
 
 	// TODO(selman): copied from prometheus/web/ui
 	resolution := math.Max(
@@ -134,7 +135,8 @@ func realMain(
 		fmt.Printf("ANSI: %q", termenv.ANSI.Convert(bgcolor))
 		sekans := bgcolor.Sequence(false)
 		return SliceFilter(colors, func(color asciigraph.AnsiColor) bool {
-			fmt.Printf("SEKANS: %q, AG: %q, result: %v\n", sekans, fmt.Sprintf("%d", color), sekans == fmt.Sprintf("%d", color))
+			_ = sekans
+			// fmt.Printf("SEKANS: %q, AG: %q, result: %v\n", sekans, fmt.Sprintf("%d", color), sekans == fmt.Sprintf("%d", color))
 			return true
 		})
 	}
