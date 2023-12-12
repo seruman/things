@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/apognu/gocal"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/mergestat/timediff"
-	"golang.org/x/exp/slog"
 )
 
 func main() {
@@ -138,10 +138,12 @@ func homeMatches(start, end time.Time) ([]*match, error) {
 }
 
 func fetchCalendar() (*bytes.Reader, error) {
+	logger := newLogger(slog.LevelError)
 	httpclient := retryablehttp.NewClient()
 	httpclient.RetryWaitMax = 5 * time.Minute
 	httpclient.HTTPClient.Timeout = 5 * time.Minute
-	httpclient.Logger = newSlogAdapter(slog.DebugLevel)
+	httpclient.Logger = &slogAdapter{logger}
+	httpclient.RequestLogHook = newRequestLogHook(logger)
 
 	req, err := retryablehttp.NewRequest(http.MethodGet, calendarURL, nil)
 	if err != nil {
@@ -173,23 +175,32 @@ func summary(s string) (string, string) {
 	return parts[0], parts[1]
 }
 
+func newRequestLogHook(logger *slog.Logger) retryablehttp.RequestLogHook {
+	return func(_ retryablehttp.Logger, req *http.Request, retry int) {
+		if retry == 0 {
+			return
+		}
+
+		logger.Warn("retryablehttp: retrying request", "retry", retry, "method", req.Method, "url", req.URL.String())
+	}
+}
+
 type slogAdapter struct {
 	*slog.Logger
 }
 
 var _ retryablehttp.LeveledLogger = (*slogAdapter)(nil)
 
-func newSlogAdapter(level slog.Level) *slogAdapter {
+func newLogger(level slog.Level) *slog.Logger {
 	handleropts := slog.HandlerOptions{
 		Level: level,
 	}
 
-	logger := slog.New(handleropts.NewTextHandler(os.Stderr))
-	return &slogAdapter{logger}
+	return slog.New(slog.NewTextHandler(os.Stderr, &handleropts))
 }
 
 func (r *slogAdapter) Error(msg string, keysAndValues ...interface{}) {
-	r.Logger.Error(msg, nil, keysAndValues...)
+	r.Logger.Error(msg, keysAndValues...)
 }
 
 func (r *slogAdapter) Info(msg string, keysAndValues ...interface{}) {
