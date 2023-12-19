@@ -130,6 +130,9 @@ func realMain(_ context.Context, _ []string) error {
 	}
 
 	csvwriter.Flush()
+	if err := csvwriter.Error(); err != nil {
+		return err
+	}
 
 	fmt.Fprintln(os.Stdout, buf.String())
 
