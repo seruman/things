@@ -116,6 +116,10 @@ func realMain(_ context.Context, _ []string) error {
 		row := make([]string, len(headers))
 		for i, h := range headers {
 			row[i] = matches[h]
+			if row[i] == "-" {
+				row[i] = ""
+			}
+
 		}
 
 		csvwriter.Write(row)
