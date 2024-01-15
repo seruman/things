@@ -2,10 +2,10 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 )
@@ -87,15 +87,18 @@ var headers = [...]header{
 var pattern = regexp.MustCompile(`^([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^s]+?)\" \"([^s]+)\" \"([^ ]*)\" \"([^ ]*)\"$`)
 
 func main() {
-	if err := realMain(context.Background(), os.Args); err != nil {
+	if err := realMain(
+		context.Background(),
+		os.Args,
+		os.Stdout,
+	); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 }
 
-func realMain(_ context.Context, _ []string) error {
-	buf := bytes.NewBuffer(nil)
-	csvwriter := csv.NewWriter(buf)
+func realMain(_ context.Context, _ []string, stdout io.Writer) error {
+	csvwriter := csv.NewWriter(stdout)
 
 	headerrow := make([]string, len(headers))
 	for i, h := range headers {
@@ -133,8 +136,6 @@ func realMain(_ context.Context, _ []string) error {
 	if err := csvwriter.Error(); err != nil {
 		return err
 	}
-
-	fmt.Fprintln(os.Stdout, buf.String())
 
 	return nil
 }
