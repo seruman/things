@@ -1,90 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/csv"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 )
-
-type header int
-
-const (
-	type_ header = iota + 1
-	time
-	elb
-	client_ip
-	client_port
-	target_ip
-	target_port
-	request_processing_time
-	target_processing_time
-	response_processing_time
-	elb_status_code
-	target_status_code
-	received_bytes
-	sent_bytes
-	request_verb
-	request_url
-	request_proto
-	user_agent
-	ssl_cipher
-	ssl_protocol
-	target_group_arn
-	trace_id
-	domain_name
-	chosen_cert_arn
-	matched_rule_priority
-	request_creation_time
-	actions_executed
-	redirect_url
-	lambda_error_reason
-	target_port_list
-	target_status_code_list
-	classification
-	classification_reason
-)
-
-var headers = [...]header{
-	type_,
-	time,
-	elb,
-	client_ip,
-	client_port,
-	target_ip,
-	target_port,
-	request_processing_time,
-	target_processing_time,
-	response_processing_time,
-	elb_status_code,
-	target_status_code,
-	received_bytes,
-	sent_bytes,
-	request_verb,
-	request_url,
-	request_proto,
-	user_agent,
-	ssl_cipher,
-	ssl_protocol,
-	target_group_arn,
-	trace_id,
-	domain_name,
-	chosen_cert_arn,
-	matched_rule_priority,
-	request_creation_time,
-	actions_executed,
-	redirect_url,
-	lambda_error_reason,
-	target_port_list,
-	target_status_code_list,
-	classification,
-	classification_reason,
-}
-
-var pattern = regexp.MustCompile(`^([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^s]+?)\" \"([^s]+)\" \"([^ ]*)\" \"([^ ]*)\"$`)
 
 func main() {
 	if err := realMain(
@@ -97,45 +21,84 @@ func main() {
 	}
 }
 
-func realMain(_ context.Context, _ []string, stdout io.Writer) error {
-	csvwriter := csv.NewWriter(stdout)
+func realMain(
+	_ context.Context,
+	osargs []string,
+	stdout io.Writer,
+) error {
+	flagset := flag.NewFlagSet("csv", flag.ExitOnError)
+	flagNoHeader := flagset.Bool("nh", false, "do not output header")
+	flagNoDash := flagset.Bool("nd", false, "replace dashes with empty strings")
 
-	headerrow := make([]string, len(headers))
-	for i, h := range headers {
-		headerrow[i] = h.String()
+	if err := flagset.Parse(osargs[1:]); err != nil {
+		return err
 	}
 
-	csvwriter.Write(headerrow)
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := scanner.Text()
+	csvreader := csv.NewReader(os.Stdin)
+	csvreader.Comma = ' '
 
-		matches := pattern.FindStringSubmatch(line)
-
-		if len(matches) != len(headers)+1 {
-			return fmt.Errorf("invalid line: %s", line)
+	csvwriter := csv.NewWriter(stdout)
+	if !*flagNoHeader {
+		if err := csvwriter.Write(header); err != nil {
+			return err
 		}
+	}
 
-		row := make([]string, len(headers))
-		for i, h := range headers {
-			row[i] = matches[h]
-			if row[i] == "-" {
-				row[i] = ""
+	for {
+		record, err := csvreader.Read()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
 			}
 
+			return err
 		}
 
-		csvwriter.Write(row)
-	}
+		if *flagNoDash {
+			for i, field := range record {
+				if field == "-" {
+					record[i] = ""
+				}
+			}
+		}
 
-	if err := scanner.Err(); err != nil {
-		return err
+		if err := csvwriter.Write(record); err != nil {
+			return err
+		}
 	}
 
 	csvwriter.Flush()
-	if err := csvwriter.Error(); err != nil {
-		return err
-	}
+	return csvwriter.Error()
+}
 
-	return nil
+var header = []string{
+	"type",
+	"time",
+	"elb",
+	"client_port",
+	"target_port",
+	"request_processing_time",
+	"target_processing_time",
+	"response_processing_time",
+	"elb_status_code",
+	"target_status_code",
+	"received_bytes",
+	"sent_bytes",
+	"request",
+	"user_agent",
+	"ssl_cipher",
+	"ssl_protocol",
+	"target_group_arn",
+	"trace_id",
+	"domain_name",
+	"chosen_cert_arn",
+	"matched_rule_priority",
+	"request_creation_time",
+	"actions_executed",
+	"redirect_url",
+	"error_reason",
+	"target:port_list",
+	"target_status_code_list",
+	"classification",
+	"classification_reason",
 }
