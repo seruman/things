@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log/slog"
 	"net/http"
 	"os"
@@ -86,7 +85,7 @@ func realMain(args []string, stdout io.Writer) error {
 		Matches:  matchInfos,
 		Duration: timediff.TimeDiff(end, timediff.WithStartTime(start)),
 	}
-	err = tmpl.Execute(os.Stdout, data)
+	err = tmpl.Execute(stdout, data)
 	if err != nil {
 		return fmt.Errorf("output: execute: %w", err)
 	}
@@ -161,7 +160,7 @@ func fetchCalendar() (*bytes.Reader, error) {
 		return nil, fmt.Errorf("fetch-calendar: response: non-ok response, status: %v", resp.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("fetch-calendar: body: %w", err)
 	}
