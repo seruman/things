@@ -34,6 +34,7 @@ func realMain(
 	flagPreRelease := flagset.Bool("pre-release", false, "return pre-release versions only")
 	flagSortReverse := flagset.Bool("r", false, "sort in reverse order")
 	flagForceColor := flagset.Bool("fc", false, "force color output")
+	flagIgnoreInvalid := flagset.Bool("ii", false, "ignore invalid semver tags")
 
 	flagset.Usage = func() {
 		fmt.Fprintf(stderr, "usage: %s [options] [path]\n", exec)
@@ -87,7 +88,9 @@ func realMain(
 				errstr = "invalid semver"
 			}
 
-			fmt.Fprintf(stderr, "%v: %v\n", colorError.Sprintf("%v", errstr), r)
+			if !*flagIgnoreInvalid {
+				fmt.Fprintf(stderr, "%v: %v\n", colorError.Sprintf("%v", errstr), r)
+			}
 			continue
 		}
 
