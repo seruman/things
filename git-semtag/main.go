@@ -32,6 +32,7 @@ func realMain(
 	exec := args[0]
 	flagset := flag.NewFlagSet("git-semtag", flag.ExitOnError)
 	flagPreRelease := flagset.Bool("pre-release", false, "return pre-release versions only")
+	flagSortReverse := flagset.Bool("r", false, "sort in reverse order")
 
 	flagset.Usage = func() {
 		fmt.Fprintf(stderr, "usage: %s [options] [path]\n", exec)
@@ -88,9 +89,15 @@ func realMain(
 		versions = append(versions, *v)
 	}
 
-	slices.SortFunc(versions, func(a, b semver.Version) bool {
-		return a.LessThan(&b)
-	})
+	if *flagSortReverse {
+		slices.SortFunc(versions, func(a, b semver.Version) bool {
+			return a.GreaterThan(&b)
+		})
+	} else {
+		slices.SortFunc(versions, func(a, b semver.Version) bool {
+			return a.LessThan(&b)
+		})
+	}
 
 	if *flagPreRelease {
 		versions = filter(versions, func(v semver.Version) bool {
