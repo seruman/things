@@ -33,6 +33,7 @@ func realMain(
 	flagset := flag.NewFlagSet("git-semtag", flag.ExitOnError)
 	flagPreRelease := flagset.Bool("pre-release", false, "return pre-release versions only")
 	flagSortReverse := flagset.Bool("r", false, "sort in reverse order")
+	flagForceColor := flagset.Bool("fc", false, "force color output")
 
 	flagset.Usage = func() {
 		fmt.Fprintf(stderr, "usage: %s [options] [path]\n", exec)
@@ -44,6 +45,10 @@ func realMain(
 		return err
 	}
 	_ = flagset.Args()
+
+	if *flagForceColor {
+		ansicolor.NoColor = false
+	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
