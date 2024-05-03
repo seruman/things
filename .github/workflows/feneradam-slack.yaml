@@ -17,14 +17,11 @@ jobs:
     - name: Install feneradam
       uses: actions/setup-go@v2
       with:
-        go-version: '1.19'
+        go-version: '1.21'
     - run:  go install ./feneradam
 
     - name: Install slack-send
-      uses: actions/setup-go@v2
-      with:
-        go-version: '1.19'
-    - run:  go install ./slack-send
+      run:  go install ./slack-send
 
     - name: Feneradam
       id: feneradam
