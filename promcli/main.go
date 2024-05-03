@@ -51,7 +51,7 @@ func realMain(
 	_ = args
 
 	flagset := flag.NewFlagSet(exec, flag.ExitOnError)
-	flagDuration := flagset.Duration("duration", 1*time.Hour*24, "Duration to query")
+	flagDuration := flagset.Duration("duration", 1*time.Hour, "Duration to query")
 	flagAddr := flagset.String("addr", "http://localhost:9090", "Prometheus address")
 	flagUser := flagset.String("user", "", "User for basic auth")
 	flagPassword := flagset.String("passwd", "", "Password for basic auth")
@@ -72,6 +72,7 @@ func realMain(
 		rtt = promconfig.NewBasicAuthRoundTripper(
 			*flagUser,
 			promconfig.Secret(*flagPassword),
+			"",
 			"",
 			rtt,
 		)
