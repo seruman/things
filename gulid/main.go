@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -26,7 +25,7 @@ func realMain() error {
 		return err
 	}
 
-	fmt.Println(strings.ToLower(u.String()))
+	fmt.Println(u.String())
 
 	return nil
 }
