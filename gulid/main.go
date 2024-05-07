@@ -1,10 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 )
@@ -17,10 +16,7 @@ func main() {
 }
 
 func realMain() error {
-	entropy := rand.New(rand.NewSource(time.Now().UnixNano()))
-	ms := ulid.Timestamp(time.Now())
-
-	u, err := ulid.New(ms, entropy)
+	u, err := ulid.New(ulid.Now(), rand.Reader)
 	if err != nil {
 		return err
 	}
