@@ -7,13 +7,9 @@ toolchain go1.22.3
 require (
 	github.com/apognu/gocal v0.9.0
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
-	github.com/google/go-cmp v0.6.0
-	github.com/johnmccabe/go-bitbar v0.5.0
-	github.com/jomei/notionapi v1.5.0
 	github.com/nlopes/slack v0.6.0
 	github.com/peterbourgon/ff/v3 v3.1.2
 	github.com/pkg/errors v0.9.1 // indirect
-	gotest.tools/v3 v3.0.3
 )
 
 require (
