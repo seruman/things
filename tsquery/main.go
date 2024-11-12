@@ -34,9 +34,15 @@ func realMain(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.
 	fs := flag.NewFlagSet("tsquery", flag.ExitOnError)
 	fs.SetOutput(stderr)
 
-	flagLang := fs.String("l", "go", "language")
-	var flagCaptues stringsFlag
+	var (
+		flagLang             string
+		flagCaptues          stringsFlag
+		flagWithCaptureNames bool
+	)
+
+	fs.StringVar(&flagLang, "l", "go", "language")
 	fs.Var(&flagCaptues, "c", "captures to output (comma-separated)")
+	fs.BoolVar(&flagWithCaptureNames, "n", false, "output capture names")
 
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: %s [options] <query> [<file>]\n", fs.Name())
@@ -70,11 +76,21 @@ func realMain(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.
 	}
 
 	lang := golang.GetLanguage()
-	switch *flagLang {
+	switch flagLang {
 	case "go":
 		lang = golang.GetLanguage()
 	default:
-		return fmt.Errorf("unsupported language: %s", *flagLang)
+		return fmt.Errorf("unsupported language: %s", flagLang)
+	}
+
+	dump := func(capture string, value string) {
+		fmt.Fprintln(stdout, value)
+	}
+
+	if flagWithCaptureNames {
+		dump = func(capture string, value string) {
+			fmt.Fprintf(stdout, "%s: %s\n", capture, value)
+		}
 	}
 
 	src, err := io.ReadAll(in)
@@ -107,7 +123,8 @@ func realMain(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.
 				continue
 			}
 
-			fmt.Fprintf(stdout, "%s: %s\n", capture, c.Node.Content(src))
+			value := c.Node.Content(src)
+			dump(capture, value)
 		}
 	}
 
