@@ -1,8 +1,6 @@
 module github.com/seruman/things
 
-go 1.21
-
-toolchain go1.22.3
+go 1.23
 
 require (
 	github.com/apognu/gocal v0.9.0
