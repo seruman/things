@@ -23,6 +23,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/prometheus v0.53.0
+	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
 )
 
