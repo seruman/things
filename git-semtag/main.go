@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/Masterminds/semver/v3"
 	ansicolor "github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"golang.org/x/exp/slices"
 )
 
 func main() {
@@ -97,15 +97,17 @@ func realMain(
 		versions = append(versions, *v)
 	}
 
-	if *flagSortReverse {
-		slices.SortFunc(versions, func(a, b semver.Version) bool {
-			return a.GreaterThan(&b)
-		})
-	} else {
-		slices.SortFunc(versions, func(a, b semver.Version) bool {
-			return a.LessThan(&b)
-		})
+	sortFunc := func(a, b semver.Version) int {
+		return b.Compare(&a)
 	}
+
+	if *flagSortReverse {
+		sortFunc = func(a, b semver.Version) int {
+			return a.Compare(&b)
+		}
+	}
+
+	slices.SortFunc(versions, sortFunc)
 
 	if *flagPreRelease {
 		versions = filter(versions, func(v semver.Version) bool {
