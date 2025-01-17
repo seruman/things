@@ -98,12 +98,12 @@ func realMain(
 	}
 
 	sortFunc := func(a, b semver.Version) int {
-		return b.Compare(&a)
+		return a.Compare(&b)
 	}
 
 	if *flagSortReverse {
 		sortFunc = func(a, b semver.Version) int {
-			return a.Compare(&b)
+			return b.Compare(&a)
 		}
 	}
 
