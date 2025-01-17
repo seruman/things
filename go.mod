@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.16.0
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/google/uuid v1.6.0
@@ -22,7 +23,6 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/prometheus v0.53.0
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
-	golang.org/x/text v0.16.0
 )
 
 require (
