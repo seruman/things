@@ -1,175 +1,118 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"iter"
+	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
-)
 
-// TODO: add best effort transpilation;
-// - && || -> and or
-// - $(...) -> (...)
-// - <(...) -> (... | psub)
+	"bou.ke/babelfish/translate"
+	"github.com/itchyny/zshhist-go"
+	"gopkg.in/yaml.v3"
+	"mvdan.cc/sh/v3/syntax"
+)
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	if err := realMain(
 		ctx,
+		os.Args,
 		os.Stdin,
 		os.Stdout,
 		os.Stderr,
-		os.Args,
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 }
 
+func iterzhist(r *zshhist.Reader) iter.Seq2[int, zshhist.History] {
+	return func(yield func(int, zshhist.History) bool) {
+		i := 0
+		for r.Scan() {
+			i++
+			if !yield(i, r.History()) {
+				break
+			}
+		}
+	}
+}
+
 func realMain(
 	_ context.Context,
+	_ []string,
 	stdin *os.File,
 	stdout *os.File,
-	_ *os.File,
-	_ []string,
+	stderr *os.File,
 ) error {
-	entries, err := ParseHistory(stdin)
-	if err != nil {
-		return fmt.Errorf("parse-history: %w", err)
+	fs := flag.NewFlagSet("zshhist2fish", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(stderr, "Usage: %s\n", fs.Name())
+		fs.PrintDefaults()
 	}
 
-	if err := WriteHistory(stdout, entries); err != nil {
-		return fmt.Errorf("write-history: %w", err)
+	flagDebug := fs.Bool("debug", false, "debug skipped stuff")
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return err
 	}
 
-	return nil
+	logout := io.Discard
+	if *flagDebug {
+		logout = stderr
+	}
+
+	logger := slog.New(
+		slog.NewTextHandler(
+			logout,
+			&slog.HandlerOptions{Level: slog.LevelDebug},
+		),
+	)
+
+	r := zshhist.NewReader(stdin)
+	p := syntax.NewParser(syntax.KeepComments(true), syntax.Variant(syntax.LangBash))
+
+	var fishEntries []*entry
+	for i, h := range iterzhist(r) {
+		f, err := p.Parse(strings.NewReader(h.Command), "")
+		if err != nil {
+			logger.Debug("skip parse", "i", i, "command", h.Command, "err", err)
+			continue
+		}
+
+		t := translate.NewTranslator()
+		if err := t.File(f); err != nil {
+			var uerr *translate.UnsupportedError
+			if errors.As(err, &uerr) {
+				logger.Debug("skip translate", "i", i, "command", h.Command, "err", err)
+				continue
+			}
+		}
+
+		var b bytes.Buffer
+		_, _ = t.WriteTo(&b)
+		fishEntries = append(fishEntries, &entry{
+			When:    h.Time,
+			Command: b.String(),
+		})
+	}
+
+	if r.Err() != nil {
+		return r.Err()
+	}
+
+	return yaml.NewEncoder(stdout).Encode(fishEntries)
 }
 
 type entry struct {
-	timestamp int64
-	command   string
-}
-
-type decoder struct {
-	r *bufio.Reader
-}
-
-func newDecoder(r io.Reader) *decoder {
-	return &decoder{r: bufio.NewReader(r)}
-}
-
-func (d *decoder) zshEntry() ([]byte, error) {
-	line, err := d.r.ReadBytes('\n')
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]byte, 0, len(line))
-
-	// Ripped from;
-	// https://gist.github.com/xkikeg/4162343/3ed7dfc1147b56931c4910cab0da47076b435d0d
-	change := false
-	for _, b := range line {
-		if b == 0x83 {
-			change = true
-			continue
-		}
-
-		if change {
-			result = append(result, b^32)
-		} else {
-			result = append(result, b)
-		}
-		change = false
-	}
-	return result, nil
-}
-
-func parseEntry(line string) (*entry, error) {
-	// : 1736681683:0;fd
-	// entry := &entry{ timestamp: 1736681683, command: "fd" }
-	if !strings.HasPrefix(line, ": ") {
-		return nil, nil
-	}
-
-	line = strings.TrimPrefix(line, ": ")
-	parts := strings.SplitN(line, ":", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("missing timestamp separator: %s", line)
-	}
-
-	timestamp, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("parsing timestamp: %w, %s", err, line)
-	}
-
-	parts = strings.SplitN(parts[1], ";", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("missing command separator: %s", line)
-	}
-
-	return &entry{
-		timestamp: timestamp,
-		command:   strings.TrimSuffix(parts[1], "\n"),
-	}, nil
-}
-
-func ParseHistory(r io.Reader) ([]*entry, error) {
-	d := newDecoder(r)
-	var entries []*entry
-
-	for {
-		line, err := d.zshEntry()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("read-zsh-entry: %w", err)
-		}
-
-		lineStr := string(line)
-		if strings.HasPrefix(lineStr, ": ") {
-			entry, err := parseEntry(lineStr)
-			if err != nil {
-				continue
-			}
-			if entry != nil {
-				entries = append(entries, entry)
-			}
-			continue
-		}
-
-		if len(entries) > 0 {
-			entries[len(entries)-1].command += lineStr
-		}
-	}
-
-	for _, e := range entries {
-		e.command = strings.TrimSuffix(e.command, "\n")
-	}
-
-	return entries, nil
-}
-
-func formatFishEntry(e *entry) string {
-	return fmt.Sprintf("- cmd: %s\n  when: %d", e.command, e.timestamp)
-}
-
-func WriteHistory(w io.Writer, entries []*entry) error {
-	for i, e := range entries {
-		if i > 0 {
-			if _, err := fmt.Fprintln(w); err != nil {
-				return err
-			}
-		}
-		if _, err := fmt.Fprint(w, formatFishEntry(e)); err != nil {
-			return err
-		}
-	}
-	return nil
+	When    int64  `yaml:"when"`
+	Command string `yaml:"cmd"`
 }
