@@ -7,3 +7,4 @@ urlparse/urlparse
 ulid/ulid
 gotime/gotime
 uuid/uuid
+tsquery/tsquery
