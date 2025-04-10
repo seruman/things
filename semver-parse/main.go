@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 )
@@ -26,6 +28,13 @@ func realMain(
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
+	fs := flag.NewFlagSet("semver", flag.ExitOnError)
+	flagCompact := fs.Bool("c", false, "compact output")
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return err
+	}
+
 	scanner := bufio.NewScanner(stdin)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -35,17 +44,26 @@ func realMain(
 			continue
 		}
 
-		dump(stdout, version)
+		dump(stdout, version, *flagCompact)
 	}
 
 	return scanner.Err()
 }
 
-func dump(w io.Writer, v *semver.Version) {
-	fmt.Fprintf(w, "Version: %s\n", v)
-	fmt.Fprintf(w, "Major: %d\n", v.Major())
-	fmt.Fprintf(w, "Minor: %d\n", v.Minor())
-	fmt.Fprintf(w, "Patch: %d\n", v.Patch())
-	fmt.Fprintf(w, "Prerelease: %s\n", v.Prerelease())
-	fmt.Fprintf(w, "Meta: %s\n", v.Metadata())
+func dump(w io.Writer, v *semver.Version, compact bool) {
+	parts := []string{
+		fmt.Sprintf("Version: %s", v),
+		fmt.Sprintf("Major: %d", v.Major()),
+		fmt.Sprintf("Minor: %d", v.Minor()),
+		fmt.Sprintf("Patch: %d", v.Patch()),
+		fmt.Sprintf("Prerelease: %s", v.Prerelease()),
+		fmt.Sprintf("Meta: %s", v.Metadata()),
+	}
+
+	delimiter := "\n"
+	if compact {
+		delimiter = " "
+	}
+
+	fmt.Fprintln(w, strings.Join(parts, delimiter))
 }
