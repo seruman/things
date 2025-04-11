@@ -347,12 +347,18 @@ func rewriteSubTestName(s string) string {
 }
 
 func testInfoCmp(a, b *TestInfo) int {
-	if a.FullName != b.FullName {
+	if a.PackageName != b.PackageName {
+		return strings.Compare(a.PackageName, b.PackageName)
+	}
+
+	if a.FileName != b.FileName {
 		return strings.Compare(a.FullName, b.FullName)
 	}
+
 	if a.Line != b.Line {
 		return a.Line - b.Line
 	}
+
 	if a.Column != b.Column {
 		return a.Column - b.Column
 	}
