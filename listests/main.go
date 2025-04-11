@@ -9,6 +9,7 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
+	"iter"
 	"os"
 	"os/signal"
 	"slices"
@@ -48,10 +49,12 @@ func realmain(
 	var (
 		flagTags    string
 		flagVerbose bool
+		flagVimgrep bool
 	)
 
 	fs.StringVar(&flagTags, "tags", "", "comma-separated list of build tags to apply")
 	fs.BoolVar(&flagVerbose, "v", false, "verbose mode")
+	fs.BoolVar(&flagVimgrep, "vimgrep", false, "output in vimgrep format")
 
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: %s [options] [packages...]\n", fs.Name())
@@ -88,24 +91,30 @@ func realmain(
 
 	slices.SortStableFunc(tests, testInfoCmp)
 
-	var results []string
-	for _, test := range tests {
-		testnames := flattenTestTree(test)
-		results = append(results, testnames...)
+	if flagVimgrep {
+		// TODO: make it default, absolute should be optional
+		cwd, _ := os.Getwd()
+		for test := range iterTests(tests) {
+			path := "." + strings.TrimPrefix(test.FileName, cwd)
+			fmt.Fprintf(stdout, "%s:%d:%d:%v:%v\n", path, test.Line, test.Column, test.PackageName, test.FullName)
+		}
+		return nil
 	}
 
-	for _, testName := range results {
-		fmt.Fprintln(stdout, testName)
+	for test := range iterTests(tests) {
+		fmt.Println(test.FullName)
 	}
 
 	return nil
 }
 
 type TestInfo struct {
-	Name             string      // Name of this test (not including parents)
-	DisplayName      string      // Display name (go test output)
-	FullName         string      // Full path including parent tests
-	FullDisplayName  string      // Full display name (go test output)
+	Name            string // Name of this test (not including parents)
+	DisplayName     string // Display name (go test output)
+	FullName        string // Full path including parent tests
+	FullDisplayName string // Full display name (go test output)
+	// TODO: for nested packages, only the package name in the source code is
+	// used. would be good to have full package name or smth.
 	PackageName      string      // Package containing the test
 	FileName         string      // File where the test is defined
 	Line             int         // Line number in the file
@@ -314,19 +323,20 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 	})
 }
 
-func flattenTestTree(test *TestInfo) []string {
-	var testnames []string
-	testnames = append(testnames, test.FullName)
+func iterTests(tests []*TestInfo) iter.Seq[*TestInfo] {
+	return func(yield func(*TestInfo) bool) {
+		// TODO: mutates
+		slices.SortStableFunc(tests, testInfoCmp)
 
-	subtests := test.SubTests
-	slices.SortStableFunc(subtests, testInfoCmp)
-
-	for _, subTest := range subtests {
-		subtestnames := flattenTestTree(subTest)
-		testnames = append(testnames, subtestnames...)
+		for _, test := range tests {
+			if !yield(test) {
+				return
+			}
+			if len(test.SubTests) > 0 {
+				iterTests(test.SubTests)(yield)
+			}
+		}
 	}
-
-	return testnames
 }
 
 // https://github.com/golang/go/blob/master/src/testing/match.go#L282-L298
