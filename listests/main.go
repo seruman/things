@@ -56,8 +56,8 @@ func realmain(
 
 	fs.StringVar(&flagTags, "tags", "", "comma-separated list of build tags to apply")
 	fs.BoolVar(&flagVerbose, "v", false, "verbose mode")
-	fs.BoolVar(&flagVimgrep, "vimgrep", false, `output in vimgrep format, shorthand for -format="{{.RelativeFileName}}:{{.Line}}:{{.Column}}:{{.PackageName}}:{{.FullName}}"`)
-	fs.StringVar(&flagFormat, "format", "", "output format. Available fields: Name, DisplayName, FullName, FullDisplayName, PackageName, FileName, RelativeFileName, Line, Column, HasGeneratedName, IsSubtest, SubTests. Use {{.Field}} to access the field. Example: -format='{{.FullName}}'")
+	fs.BoolVar(&flagVimgrep, "vimgrep", false, "output in ripgrep's vimgrep format")
+	fs.StringVar(&flagFormat, "format", "", "output format")
 
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: %s [options] [packages...]\n", fs.Name())
@@ -99,7 +99,7 @@ func realmain(
 			return fmt.Errorf("cannot use -vimgrep and -format together")
 		}
 
-		flagFormat = "{{.RelativeFileName}}:{{.Line}}:{{.Column}}:{{.PackageName}}:{{.FullName}}"
+		flagFormat = "{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.Start.Column}}:{{.PackageName}}:{{.FullName}}"
 	}
 
 	if flagFormat == "" {
@@ -149,11 +149,20 @@ type TestInfo struct {
 	// used. would be good to have full package name or smth.
 	PackageName      string      // Package containing the test
 	FileName         string      // File where the test is defined
-	Line             int         // Line number in the file
-	Column           int         // Column position
+	Range            SourceRange // Source code range location
 	HasGeneratedName bool        // Whether the test name was runtime generated
 	IsSubtest        bool        // Whether it's a subtest or top-level
 	SubTests         []*TestInfo // Subtests
+}
+
+type SourceRange struct {
+	Start SourcePosition
+	End   SourcePosition
+}
+
+type SourcePosition struct {
+	Line   int
+	Column int
 }
 
 func findTestsInPackages(
@@ -221,15 +230,27 @@ func findTestsInFile(file *ast.File, fset *token.FileSet, filename, pkgName stri
 		if strings.HasPrefix(funcDecl.Name.Name, "Test") {
 			if isTestFunction(funcDecl) {
 				testName := funcDecl.Name.Name
-				pos := fset.Position(funcDecl.Name.Pos())
+
+				start := fset.Position(funcDecl.Name.Pos())
+				end := fset.Position(funcDecl.End())
 
 				test := &TestInfo{
-					Name:             testName,
-					FullName:         testName,
-					PackageName:      pkgName,
-					FileName:         filename,
-					Line:             pos.Line,
-					Column:           pos.Column,
+					Name:        testName,
+					FullName:    testName,
+					PackageName: pkgName,
+					FileName:    filename,
+					// Start:            start.Line,
+					// Column:           start.Column,
+					Range: SourceRange{
+						Start: SourcePosition{
+							Line:   start.Line,
+							Column: start.Column,
+						},
+						End: SourcePosition{
+							Line:   end.Line,
+							Column: end.Column,
+						},
+					},
 					HasGeneratedName: false,
 					IsSubtest:        false,
 					SubTests:         nil,
@@ -294,7 +315,8 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 			return true
 		}
 
-		pos := fset.Position(callExpr.Pos())
+		start := fset.Position(callExpr.Pos())
+		end := fset.Position(callExpr.End())
 
 		var subTest *TestInfo
 		switch arg := callExpr.Args[0].(type) {
@@ -307,14 +329,22 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 				sanitizedFullName := parentTest.FullName + "/" + sanitizedSubtestName
 
 				subTest = &TestInfo{
-					Name:             subtestName,
-					DisplayName:      sanitizedSubtestName,
-					FullName:         fullName,
-					FullDisplayName:  sanitizedFullName,
-					PackageName:      pkgName,
-					FileName:         filename,
-					Line:             pos.Line,
-					Column:           pos.Column,
+					Name:            subtestName,
+					DisplayName:     sanitizedSubtestName,
+					FullName:        fullName,
+					FullDisplayName: sanitizedFullName,
+					PackageName:     pkgName,
+					FileName:        filename,
+					Range: SourceRange{
+						Start: SourcePosition{
+							Line:   start.Line,
+							Column: start.Column,
+						},
+						End: SourcePosition{
+							Line:   end.Line,
+							Column: end.Column,
+						},
+					},
 					HasGeneratedName: false,
 					IsSubtest:        true,
 				}
@@ -330,12 +360,20 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 			subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
 			fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
 			subTest = &TestInfo{
-				Name:             subtestName,
-				FullName:         fullName,
-				PackageName:      pkgName,
-				FileName:         filename,
-				Line:             pos.Line,
-				Column:           pos.Column,
+				Name:        subtestName,
+				FullName:    fullName,
+				PackageName: pkgName,
+				FileName:    filename,
+				Range: SourceRange{
+					Start: SourcePosition{
+						Line:   start.Line,
+						Column: start.Column,
+					},
+					End: SourcePosition{
+						Line:   end.Line,
+						Column: end.Column,
+					},
+				},
 				HasGeneratedName: true,
 				IsSubtest:        true,
 			}
@@ -397,12 +435,12 @@ func testInfoCmp(a, b *TestInfo) int {
 		return strings.Compare(a.FullName, b.FullName)
 	}
 
-	if a.Line != b.Line {
-		return a.Line - b.Line
+	if a.Range.Start.Line != b.Range.Start.Line {
+		return a.Range.Start.Line - b.Range.Start.Line
 	}
 
-	if a.Column != b.Column {
-		return a.Column - b.Column
+	if a.Range.Start.Column != b.Range.Start.Column {
+		return a.Range.Start.Column - b.Range.Start.Column
 	}
 	return 0
 }

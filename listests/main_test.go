@@ -28,8 +28,10 @@ func TestSimpleTest(t *testing.T) {
 			FileName:         testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
-			Line:             7,
-			Column:           6,
+			Range: SourceRange{
+				Start: SourcePosition{7, 6},
+				End:   SourcePosition{9, 2},
+			},
 		},
 	}
 
@@ -57,8 +59,10 @@ func TestWithSubtests(t *testing.T) {
 			FileName:         testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
-			Line:             7,
-			Column:           6,
+			Range: SourceRange{
+				Start: SourcePosition{7, 6},
+				End:   SourcePosition{15, 2},
+			},
 			SubTests: []*TestInfo{
 				{
 					Name:             "sub1",
@@ -69,8 +73,10 @@ func TestWithSubtests(t *testing.T) {
 					FileName:         testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
-					Line:             8,
-					Column:           2,
+					Range: SourceRange{
+						Start: SourcePosition{8, 2},
+						End:   SourcePosition{10, 4},
+					},
 				},
 				{
 					Name:             "sub2",
@@ -81,8 +87,10 @@ func TestWithSubtests(t *testing.T) {
 					FileName:         testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
-					Line:             12,
-					Column:           2,
+					Range: SourceRange{
+						Start: SourcePosition{12, 2},
+						End:   SourcePosition{14, 4},
+					},
 				},
 			},
 		},
@@ -112,8 +120,10 @@ func TestNestedSubtests(t *testing.T) {
 			FileName:         testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
-			Line:             7,
-			Column:           6,
+			Range: SourceRange{
+				Start: SourcePosition{7, 6},
+				End:   SourcePosition{13, 2},
+			},
 			SubTests: []*TestInfo{
 				{
 					Name:             "level1",
@@ -124,8 +134,10 @@ func TestNestedSubtests(t *testing.T) {
 					FileName:         testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
-					Line:             8,
-					Column:           2,
+					Range: SourceRange{
+						Start: SourcePosition{8, 2},
+						End:   SourcePosition{12, 4},
+					},
 					SubTests: []*TestInfo{
 						{
 							Name:             "level2",
@@ -136,8 +148,10 @@ func TestNestedSubtests(t *testing.T) {
 							FileName:         testFile,
 							HasGeneratedName: false,
 							IsSubtest:        true,
-							Line:             9,
-							Column:           3,
+							Range: SourceRange{
+								Start: SourcePosition{9, 3},
+								End:   SourcePosition{11, 5},
+							},
 						},
 					},
 				},
@@ -169,6 +183,10 @@ func TestSubtestsWithRuntimeGeneratedNames(t *testing.T) {
 			FileName:         testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
+			Range: SourceRange{
+				Start: SourcePosition{10, 6},
+				End:   SourcePosition{16, 2},
+			},
 			SubTests: []*TestInfo{
 				{
 					Name:             "<fmt.Sprintf(\"sub-test%d\", i)>",
@@ -177,12 +195,16 @@ func TestSubtestsWithRuntimeGeneratedNames(t *testing.T) {
 					FileName:         testFile,
 					HasGeneratedName: true,
 					IsSubtest:        true,
+					Range: SourceRange{
+						Start: SourcePosition{12, 3},
+						End:   SourcePosition{14, 5},
+					},
 				},
 			},
 		},
 	}
 
-	if diff := cmp.Diff(expected, got, cmpopts.IgnoreFields(TestInfo{}, "Line", "Column")); diff != "" {
+	if diff := cmp.Diff(expected, got); diff != "" {
 		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }
