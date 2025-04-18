@@ -131,10 +131,6 @@ func realmain(
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 
-		if _, err := fmt.Fprintln(stdout, buf.String()); err != nil {
-			return fmt.Errorf("failed to write output: %w", err)
-		}
-
 	}
 
 	return nil
