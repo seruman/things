@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"text/template"
 	"unicode"
 
 	"golang.org/x/tools/go/packages"
@@ -50,11 +51,13 @@ func realmain(
 		flagTags    string
 		flagVerbose bool
 		flagVimgrep bool
+		flagFormat  string
 	)
 
 	fs.StringVar(&flagTags, "tags", "", "comma-separated list of build tags to apply")
 	fs.BoolVar(&flagVerbose, "v", false, "verbose mode")
-	fs.BoolVar(&flagVimgrep, "vimgrep", false, "output in vimgrep format")
+	fs.BoolVar(&flagVimgrep, "vimgrep", false, `output in vimgrep format, shorthand for -format="{{.RelativeFileName}}:{{.Line}}:{{.Column}}:{{.PackageName}}:{{.FullName}}"`)
+	fs.StringVar(&flagFormat, "format", "", "output format. Available fields: Name, DisplayName, FullName, FullDisplayName, PackageName, FileName, RelativeFileName, Line, Column, HasGeneratedName, IsSubtest, SubTests. Use {{.Field}} to access the field. Example: -format='{{.FullName}}'")
 
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: %s [options] [packages...]\n", fs.Name())
@@ -92,17 +95,46 @@ func realmain(
 	slices.SortStableFunc(tests, testInfoCmp)
 
 	if flagVimgrep {
-		// TODO: make it default, absolute should be optional
-		cwd, _ := os.Getwd()
-		for test := range iterTests(tests) {
-			path := "." + strings.TrimPrefix(test.FileName, cwd)
-			fmt.Fprintf(stdout, "%s:%d:%d:%v:%v\n", path, test.Line, test.Column, test.PackageName, test.FullName)
+		if flagFormat != "" {
+			return fmt.Errorf("cannot use -vimgrep and -format together")
 		}
-		return nil
+
+		flagFormat = "{{.RelativeFileName}}:{{.Line}}:{{.Column}}:{{.PackageName}}:{{.FullName}}"
+	}
+
+	if flagFormat == "" {
+		flagFormat = "{{.FullName}}"
+	}
+
+	tmpl, err := template.New("format").Parse(flagFormat)
+	if err != nil {
+		return fmt.Errorf("failed to parse format: %w", err)
 	}
 
 	for test := range iterTests(tests) {
-		fmt.Println(test.FullName)
+		cwd, _ := os.Getwd()
+		relativePath := fmt.Sprintf(".%v", strings.TrimPrefix(test.FileName, cwd))
+		templateData := struct {
+			TestInfo
+			RelativeFileName string
+		}{
+			TestInfo:         *test,
+			RelativeFileName: relativePath,
+		}
+
+		var buf bytes.Buffer
+		if err := tmpl.Execute(&buf, templateData); err != nil {
+			return fmt.Errorf("failed to execute template: %w", err)
+		}
+
+		if _, err := fmt.Fprintln(stdout, buf.String()); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+
+		if _, err := fmt.Fprintln(stdout, buf.String()); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+
 	}
 
 	return nil
