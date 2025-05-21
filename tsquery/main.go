@@ -15,6 +15,7 @@ import (
 	"github.com/smacker/go-tree-sitter/java"
 	"github.com/smacker/go-tree-sitter/javascript"
 	"github.com/smacker/go-tree-sitter/python"
+	"github.com/smacker/go-tree-sitter/typescript/tsx"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
@@ -91,6 +92,8 @@ func realMain(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.
 		lang = javascript.GetLanguage()
 	case "typescript":
 		lang = typescript.GetLanguage()
+	case "tsx":
+		lang = tsx.GetLanguage()
 	default:
 		return fmt.Errorf("unsupported language: %s", flagLang)
 	}
