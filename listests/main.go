@@ -113,7 +113,7 @@ func realmain(
 
 	for test := range iterTests(tests) {
 		cwd, _ := os.Getwd()
-		relativePath := fmt.Sprintf(".%v", strings.TrimPrefix(test.FileName, cwd))
+		relativePath := fmt.Sprintf(".%v", strings.TrimPrefix(test.File, cwd))
 		templateData := struct {
 			TestInfo
 			RelativeFileName string
@@ -137,18 +137,35 @@ func realmain(
 }
 
 type TestInfo struct {
-	Name            string // Name of this test (not including parents)
-	DisplayName     string // Display name (go test output)
-	FullName        string // Full path including parent tests
-	FullDisplayName string // Full display name (go test output)
-	// TODO: for nested packages, only the package name in the source code is
-	// used. would be good to have full package name or smth.
-	PackageName      string      // Package containing the test
-	FileName         string      // File where the test is defined
-	Range            SourceRange // Source code range location
-	HasGeneratedName bool        // Whether the test name was runtime generated
-	IsSubtest        bool        // Whether it's a subtest or top-level
-	SubTests         []*TestInfo // Subtests
+	// Name of this test (not including parents)
+	Name string `json:"name"`
+
+	// Display name (go test output)
+	DisplayName string `json:"displayName"`
+
+	// Full path including parent tests
+	FullName string `json:"fullName"`
+
+	// Full display name (go test output)
+	FullDisplayName string `json:"fullDisplayName"`
+
+	// Package name
+	Package string `json:"package"`
+
+	// File where the test is defined
+	File string `json:"file"`
+
+	// Source code location
+	Range SourceRange `json:"range"`
+
+	// Whether the test name was runtime generated
+	HasGeneratedName bool `json:"hasGeneratedName"`
+
+	// Whether it's a subtest or top-level
+	IsSubtest bool `json:"isSubtest"`
+
+	// Subtests
+	SubTests []*TestInfo `json:"subTests,omitzero"`
 }
 
 type SourceRange struct {
@@ -173,7 +190,7 @@ func findTestsInPackages(
 	}
 
 	cfg := &packages.Config{
-		Mode:       packages.LoadFiles | packages.NeedSyntax | packages.NeedForTest,
+		Mode:       packages.LoadFiles | packages.NeedSyntax | packages.NeedForTest | packages.NeedModule,
 		Context:    ctx,
 		Tests:      true,
 		BuildFlags: buildFlags,
@@ -205,8 +222,12 @@ func findTestsInPackages(
 				continue
 			}
 
-			logger("Processing %s in package %s...\n", filename, pkg.Name)
-			tests := findTestsInFile(file, pkg.Fset, filename, pkg.Name)
+			moduleName := pkg.Module.Path
+			pkgPath := pkg.PkgPath
+			packageName := strings.TrimPrefix(pkgPath, moduleName+"/")
+
+			logger("Processing %s in package %s...\n", filename, packageName)
+			tests := findTestsInFile(file, pkg.Fset, filename, packageName)
 			allTests = append(allTests, tests...)
 		}
 	}
@@ -231,10 +252,10 @@ func findTestsInFile(file *ast.File, fset *token.FileSet, filename, pkgName stri
 				end := fset.Position(funcDecl.End())
 
 				test := &TestInfo{
-					Name:        testName,
-					FullName:    testName,
-					PackageName: pkgName,
-					FileName:    filename,
+					Name:     testName,
+					FullName: testName,
+					Package:  pkgName,
+					File:     filename,
 					// Start:            start.Line,
 					// Column:           start.Column,
 					Range: SourceRange{
@@ -329,8 +350,8 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 					DisplayName:     sanitizedSubtestName,
 					FullName:        fullName,
 					FullDisplayName: sanitizedFullName,
-					PackageName:     pkgName,
-					FileName:        filename,
+					Package:         pkgName,
+					File:            filename,
 					Range: SourceRange{
 						Start: SourcePosition{
 							Line:   start.Line,
@@ -356,10 +377,10 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 			subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
 			fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
 			subTest = &TestInfo{
-				Name:        subtestName,
-				FullName:    fullName,
-				PackageName: pkgName,
-				FileName:    filename,
+				Name:     subtestName,
+				FullName: fullName,
+				Package:  pkgName,
+				File:     filename,
 				Range: SourceRange{
 					Start: SourcePosition{
 						Line:   start.Line,
@@ -423,11 +444,11 @@ func rewriteSubTestName(s string) string {
 }
 
 func testInfoCmp(a, b *TestInfo) int {
-	if a.PackageName != b.PackageName {
-		return strings.Compare(a.PackageName, b.PackageName)
+	if a.Package != b.Package {
+		return strings.Compare(a.Package, b.Package)
 	}
 
-	if a.FileName != b.FileName {
+	if a.File != b.File {
 		return strings.Compare(a.FullName, b.FullName)
 	}
 

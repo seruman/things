@@ -3,6 +3,7 @@ package main
 import (
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -24,8 +25,8 @@ func TestSimpleTest(t *testing.T) {
 		{
 			Name:             "TestSimple",
 			FullName:         "TestSimple",
-			PackageName:      "testdata",
-			FileName:         testFile,
+			Package:          "testdata",
+			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
 			Range: SourceRange{
@@ -55,8 +56,8 @@ func TestWithSubtests(t *testing.T) {
 		{
 			Name:             "TestWithSubtests",
 			FullName:         "TestWithSubtests",
-			PackageName:      "testdata",
-			FileName:         testFile,
+			Package:          "testdata",
+			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
 			Range: SourceRange{
@@ -69,8 +70,8 @@ func TestWithSubtests(t *testing.T) {
 					DisplayName:      "sub1",
 					FullName:         "TestWithSubtests/sub1",
 					FullDisplayName:  "TestWithSubtests/sub1",
-					PackageName:      "testdata",
-					FileName:         testFile,
+					Package:          "testdata",
+					File:             testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
 					Range: SourceRange{
@@ -83,8 +84,8 @@ func TestWithSubtests(t *testing.T) {
 					DisplayName:      "sub2",
 					FullName:         "TestWithSubtests/sub2",
 					FullDisplayName:  "TestWithSubtests/sub2",
-					PackageName:      "testdata",
-					FileName:         testFile,
+					Package:          "testdata",
+					File:             testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
 					Range: SourceRange{
@@ -116,8 +117,8 @@ func TestNestedSubtests(t *testing.T) {
 		{
 			Name:             "TestWithNestedSubtests",
 			FullName:         "TestWithNestedSubtests",
-			PackageName:      "testdata",
-			FileName:         testFile,
+			Package:          "testdata",
+			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
 			Range: SourceRange{
@@ -130,8 +131,8 @@ func TestNestedSubtests(t *testing.T) {
 					DisplayName:      "level1",
 					FullName:         "TestWithNestedSubtests/level1",
 					FullDisplayName:  "TestWithNestedSubtests/level1",
-					PackageName:      "testdata",
-					FileName:         testFile,
+					Package:          "testdata",
+					File:             testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
 					Range: SourceRange{
@@ -144,8 +145,8 @@ func TestNestedSubtests(t *testing.T) {
 							DisplayName:      "level2",
 							FullName:         "TestWithNestedSubtests/level1/level2",
 							FullDisplayName:  "TestWithNestedSubtests/level1/level2",
-							PackageName:      "testdata",
-							FileName:         testFile,
+							Package:          "testdata",
+							File:             testFile,
 							HasGeneratedName: false,
 							IsSubtest:        true,
 							Range: SourceRange{
@@ -179,8 +180,8 @@ func TestSubtestsWithRuntimeGeneratedNames(t *testing.T) {
 		{
 			Name:             "TestWithSubtestsWithRuntimeGeneratedNames",
 			FullName:         "TestWithSubtestsWithRuntimeGeneratedNames",
-			PackageName:      "testdata",
-			FileName:         testFile,
+			Package:          "testdata",
+			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
 			Range: SourceRange{
@@ -191,8 +192,8 @@ func TestSubtestsWithRuntimeGeneratedNames(t *testing.T) {
 				{
 					Name:             "<fmt.Sprintf(\"sub-test%d\", i)>",
 					FullName:         "TestWithSubtestsWithRuntimeGeneratedNames/<fmt.Sprintf(\"sub-test%d\", i)>",
-					PackageName:      "testdata",
-					FileName:         testFile,
+					Package:          "testdata",
+					File:             testFile,
 					HasGeneratedName: true,
 					IsSubtest:        true,
 					Range: SourceRange{
@@ -214,5 +215,201 @@ func testInfoCmpOpts() cmp.Option {
 		cmpopts.SortSlices(func(a, b *TestInfo) bool {
 			return a.FullName < b.FullName
 		}),
+	}
+}
+
+func TestSubPackages(t *testing.T) {
+	logger := func(string, ...any) {
+	}
+	got, err := findTestsInPackages(
+		t.Context(),
+		[]string{"./testdata/subpkg/pkg1", "./testdata/subpkg/pkg2"},
+		nil,
+		logger,
+	)
+	if err != nil {
+		t.Fatalf("Failed to find tests in subpackages: %v", err)
+	}
+
+	absPath := func(t *testing.T, path string) string {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			t.Fatalf("Failed to get absolute path for %s: %v", path, err)
+		}
+		return abs
+	}
+
+	expected := []*TestInfo{
+		{
+			Name:     "TestSome",
+			FullName: "TestSome",
+			Package:  "listests/testdata/subpkg/pkg1",
+			File:     absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+			Range: SourceRange{
+				Start: SourcePosition{Line: 5, Column: 6},
+				End:   SourcePosition{Line: 25, Column: 2},
+			},
+			SubTests: []*TestInfo{
+				{
+					Name:            "sub-test1",
+					DisplayName:     "sub-test1",
+					FullName:        "TestSome/sub-test1",
+					FullDisplayName: "TestSome/sub-test1",
+					Package:         "listests/testdata/subpkg/pkg1",
+					File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+					Range: SourceRange{
+						Start: SourcePosition{Line: 8, Column: 2},
+						End:   SourcePosition{Line: 24, Column: 4},
+					},
+					IsSubtest: true,
+					SubTests: []*TestInfo{
+						{
+							Name:            "sub-sub-test1",
+							DisplayName:     "sub-sub-test1",
+							FullName:        "TestSome/sub-test1/sub-sub-test1",
+							FullDisplayName: "TestSome/sub-test1/sub-sub-test1",
+							Package:         "listests/testdata/subpkg/pkg1",
+							File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+							Range: SourceRange{
+								Start: SourcePosition{Line: 11, Column: 3},
+								End:   SourcePosition{Line: 13, Column: 5},
+							},
+							IsSubtest: true,
+						},
+						{
+							Name:            "sub-sub-test2",
+							DisplayName:     "sub-sub-test2",
+							FullName:        "TestSome/sub-test1/sub-sub-test2",
+							FullDisplayName: "TestSome/sub-test1/sub-sub-test2",
+							Package:         "listests/testdata/subpkg/pkg1",
+							File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+							Range: SourceRange{
+								Start: SourcePosition{Line: 15, Column: 3},
+								End:   SourcePosition{Line: 23, Column: 5},
+							},
+							IsSubtest: true,
+							SubTests: []*TestInfo{
+								// sub-sub-sub-test1
+								// sub-sub-sub-test2
+								{
+									Name:            "sub-sub-sub-test1",
+									DisplayName:     "sub-sub-sub-test1",
+									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
+									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
+									Package:         "listests/testdata/subpkg/pkg1",
+									File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+									Range: SourceRange{
+										Start: SourcePosition{Line: 16, Column: 4},
+										End:   SourcePosition{Line: 18, Column: 6},
+									},
+									IsSubtest: true,
+								},
+								{
+									Name:            "sub-sub-sub-test2",
+									DisplayName:     "sub-sub-sub-test2",
+									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
+									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
+									Package:         "listests/testdata/subpkg/pkg1",
+									File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+									Range: SourceRange{
+										Start: SourcePosition{Line: 20, Column: 4},
+										End:   SourcePosition{Line: 22, Column: 6},
+									},
+									IsSubtest: true,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+
+		{
+			Name:     "TestSome",
+			FullName: "TestSome",
+			Package:  "listests/testdata/subpkg/pkg2",
+			File:     absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+			Range: SourceRange{
+				Start: SourcePosition{Line: 5, Column: 6},
+				End:   SourcePosition{Line: 25, Column: 2},
+			},
+			SubTests: []*TestInfo{
+				{
+					Name:            "sub-test1",
+					DisplayName:     "sub-test1",
+					FullName:        "TestSome/sub-test1",
+					FullDisplayName: "TestSome/sub-test1",
+					Package:         "listests/testdata/subpkg/pkg2",
+					File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+					Range: SourceRange{
+						Start: SourcePosition{Line: 8, Column: 2},
+						End:   SourcePosition{Line: 24, Column: 4},
+					},
+					IsSubtest: true,
+					SubTests: []*TestInfo{
+						{
+							Name:            "sub-sub-test1",
+							DisplayName:     "sub-sub-test1",
+							FullName:        "TestSome/sub-test1/sub-sub-test1",
+							FullDisplayName: "TestSome/sub-test1/sub-sub-test1",
+							Package:         "listests/testdata/subpkg/pkg2",
+							File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+							Range: SourceRange{
+								Start: SourcePosition{Line: 11, Column: 3},
+								End:   SourcePosition{Line: 13, Column: 5},
+							},
+							IsSubtest: true,
+						},
+						{
+							Name:            "sub-sub-test2",
+							DisplayName:     "sub-sub-test2",
+							FullName:        "TestSome/sub-test1/sub-sub-test2",
+							FullDisplayName: "TestSome/sub-test1/sub-sub-test2",
+							Package:         "listests/testdata/subpkg/pkg2",
+							File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+							Range: SourceRange{
+								Start: SourcePosition{Line: 15, Column: 3},
+								End:   SourcePosition{Line: 23, Column: 5},
+							},
+							IsSubtest: true,
+							SubTests: []*TestInfo{
+								// sub-sub-sub-test1
+								// sub-sub-sub-test2
+								{
+									Name:            "sub-sub-sub-test1",
+									DisplayName:     "sub-sub-sub-test1",
+									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
+									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
+									Package:         "listests/testdata/subpkg/pkg2",
+									File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+									Range: SourceRange{
+										Start: SourcePosition{Line: 16, Column: 4},
+										End:   SourcePosition{Line: 18, Column: 6},
+									},
+									IsSubtest: true,
+								},
+								{
+									Name:            "sub-sub-sub-test2",
+									DisplayName:     "sub-sub-sub-test2",
+									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
+									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
+									Package:         "listests/testdata/subpkg/pkg2",
+									File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+									Range: SourceRange{
+										Start: SourcePosition{Line: 20, Column: 4},
+										End:   SourcePosition{Line: 22, Column: 6},
+									},
+									IsSubtest: true,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if diff := cmp.Diff(expected, got, testInfoCmpOpts()); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }
