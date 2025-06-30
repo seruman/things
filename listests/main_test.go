@@ -10,6 +10,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
+const somedir = "some/dir"
+
 func TestSimpleTest(t *testing.T) {
 	testFile := "./testdata/simple_test.go"
 
@@ -19,13 +21,14 @@ func TestSimpleTest(t *testing.T) {
 		t.Fatalf("Failed to parse source: %v", err)
 	}
 
-	got := findTestsInFile(file, fset, testFile, "testdata")
+	got := findTestsInFile(file, fset, testFile, "testdata", somedir)
 
 	expected := []*TestInfo{
 		{
 			Name:             "TestSimple",
 			FullName:         "TestSimple",
 			Package:          "testdata",
+			Directory:        somedir,
 			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
@@ -50,13 +53,14 @@ func TestWithSubtests(t *testing.T) {
 		t.Fatalf("Failed to parse source: %v", err)
 	}
 
-	got := findTestsInFile(file, fset, testFile, "testdata")
+	got := findTestsInFile(file, fset, testFile, "testdata", somedir)
 
 	expected := []*TestInfo{
 		{
 			Name:             "TestWithSubtests",
 			FullName:         "TestWithSubtests",
 			Package:          "testdata",
+			Directory:        somedir,
 			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
@@ -71,6 +75,7 @@ func TestWithSubtests(t *testing.T) {
 					FullName:         "TestWithSubtests/sub1",
 					FullDisplayName:  "TestWithSubtests/sub1",
 					Package:          "testdata",
+					Directory:        somedir,
 					File:             testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
@@ -85,6 +90,7 @@ func TestWithSubtests(t *testing.T) {
 					FullName:         "TestWithSubtests/sub2",
 					FullDisplayName:  "TestWithSubtests/sub2",
 					Package:          "testdata",
+					Directory:        somedir,
 					File:             testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
@@ -111,13 +117,14 @@ func TestNestedSubtests(t *testing.T) {
 		t.Fatalf("Failed to parse source: %v", err)
 	}
 
-	got := findTestsInFile(file, fset, testFile, "testdata")
+	got := findTestsInFile(file, fset, testFile, "testdata", somedir)
 
 	expected := []*TestInfo{
 		{
 			Name:             "TestWithNestedSubtests",
 			FullName:         "TestWithNestedSubtests",
 			Package:          "testdata",
+			Directory:        somedir,
 			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
@@ -132,6 +139,7 @@ func TestNestedSubtests(t *testing.T) {
 					FullName:         "TestWithNestedSubtests/level1",
 					FullDisplayName:  "TestWithNestedSubtests/level1",
 					Package:          "testdata",
+					Directory:        somedir,
 					File:             testFile,
 					HasGeneratedName: false,
 					IsSubtest:        true,
@@ -146,6 +154,7 @@ func TestNestedSubtests(t *testing.T) {
 							FullName:         "TestWithNestedSubtests/level1/level2",
 							FullDisplayName:  "TestWithNestedSubtests/level1/level2",
 							Package:          "testdata",
+							Directory:        somedir,
 							File:             testFile,
 							HasGeneratedName: false,
 							IsSubtest:        true,
@@ -174,13 +183,14 @@ func TestSubtestsWithRuntimeGeneratedNames(t *testing.T) {
 		t.Fatalf("Failed to parse source: %v", err)
 	}
 
-	got := findTestsInFile(file, fset, testFile, "testdata")
+	got := findTestsInFile(file, fset, testFile, "testdata", somedir)
 
 	expected := []*TestInfo{
 		{
 			Name:             "TestWithSubtestsWithRuntimeGeneratedNames",
 			FullName:         "TestWithSubtestsWithRuntimeGeneratedNames",
 			Package:          "testdata",
+			Directory:        somedir,
 			File:             testFile,
 			HasGeneratedName: false,
 			IsSubtest:        false,
@@ -193,6 +203,7 @@ func TestSubtestsWithRuntimeGeneratedNames(t *testing.T) {
 					Name:             "<fmt.Sprintf(\"sub-test%d\", i)>",
 					FullName:         "TestWithSubtestsWithRuntimeGeneratedNames/<fmt.Sprintf(\"sub-test%d\", i)>",
 					Package:          "testdata",
+					Directory:        somedir,
 					File:             testFile,
 					HasGeneratedName: true,
 					IsSubtest:        true,
@@ -241,10 +252,11 @@ func TestSubPackages(t *testing.T) {
 
 	expected := []*TestInfo{
 		{
-			Name:     "TestSome",
-			FullName: "TestSome",
-			Package:  "listests/testdata/subpkg/pkg1",
-			File:     absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
+			Name:      "TestSome",
+			FullName:  "TestSome",
+			Package:   "listests/testdata/subpkg/pkg1",
+			Directory: absPath(t, "./testdata/subpkg/pkg1"),
+			File:      absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
 			Range: SourceRange{
 				Start: SourcePosition{Line: 5, Column: 6},
 				End:   SourcePosition{Line: 25, Column: 2},
@@ -256,6 +268,7 @@ func TestSubPackages(t *testing.T) {
 					FullName:        "TestSome/sub-test1",
 					FullDisplayName: "TestSome/sub-test1",
 					Package:         "listests/testdata/subpkg/pkg1",
+					Directory:       absPath(t, "./testdata/subpkg/pkg1"),
 					File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
 					Range: SourceRange{
 						Start: SourcePosition{Line: 8, Column: 2},
@@ -269,6 +282,7 @@ func TestSubPackages(t *testing.T) {
 							FullName:        "TestSome/sub-test1/sub-sub-test1",
 							FullDisplayName: "TestSome/sub-test1/sub-sub-test1",
 							Package:         "listests/testdata/subpkg/pkg1",
+							Directory:       absPath(t, "./testdata/subpkg/pkg1"),
 							File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
 							Range: SourceRange{
 								Start: SourcePosition{Line: 11, Column: 3},
@@ -282,6 +296,7 @@ func TestSubPackages(t *testing.T) {
 							FullName:        "TestSome/sub-test1/sub-sub-test2",
 							FullDisplayName: "TestSome/sub-test1/sub-sub-test2",
 							Package:         "listests/testdata/subpkg/pkg1",
+							Directory:       absPath(t, "./testdata/subpkg/pkg1"),
 							File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
 							Range: SourceRange{
 								Start: SourcePosition{Line: 15, Column: 3},
@@ -297,6 +312,7 @@ func TestSubPackages(t *testing.T) {
 									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
 									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
 									Package:         "listests/testdata/subpkg/pkg1",
+									Directory:       absPath(t, "./testdata/subpkg/pkg1"),
 									File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
 									Range: SourceRange{
 										Start: SourcePosition{Line: 16, Column: 4},
@@ -310,6 +326,7 @@ func TestSubPackages(t *testing.T) {
 									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
 									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
 									Package:         "listests/testdata/subpkg/pkg1",
+									Directory:       absPath(t, "./testdata/subpkg/pkg1"),
 									File:            absPath(t, "./testdata/subpkg/pkg1/some_test.go"),
 									Range: SourceRange{
 										Start: SourcePosition{Line: 20, Column: 4},
@@ -325,10 +342,11 @@ func TestSubPackages(t *testing.T) {
 		},
 
 		{
-			Name:     "TestSome",
-			FullName: "TestSome",
-			Package:  "listests/testdata/subpkg/pkg2",
-			File:     absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
+			Name:      "TestSome",
+			FullName:  "TestSome",
+			Package:   "listests/testdata/subpkg/pkg2",
+			Directory: absPath(t, "./testdata/subpkg/pkg2"),
+			File:      absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
 			Range: SourceRange{
 				Start: SourcePosition{Line: 5, Column: 6},
 				End:   SourcePosition{Line: 25, Column: 2},
@@ -340,6 +358,7 @@ func TestSubPackages(t *testing.T) {
 					FullName:        "TestSome/sub-test1",
 					FullDisplayName: "TestSome/sub-test1",
 					Package:         "listests/testdata/subpkg/pkg2",
+					Directory:       absPath(t, "./testdata/subpkg/pkg2"),
 					File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
 					Range: SourceRange{
 						Start: SourcePosition{Line: 8, Column: 2},
@@ -353,6 +372,7 @@ func TestSubPackages(t *testing.T) {
 							FullName:        "TestSome/sub-test1/sub-sub-test1",
 							FullDisplayName: "TestSome/sub-test1/sub-sub-test1",
 							Package:         "listests/testdata/subpkg/pkg2",
+							Directory:       absPath(t, "./testdata/subpkg/pkg2"),
 							File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
 							Range: SourceRange{
 								Start: SourcePosition{Line: 11, Column: 3},
@@ -366,6 +386,7 @@ func TestSubPackages(t *testing.T) {
 							FullName:        "TestSome/sub-test1/sub-sub-test2",
 							FullDisplayName: "TestSome/sub-test1/sub-sub-test2",
 							Package:         "listests/testdata/subpkg/pkg2",
+							Directory:       absPath(t, "./testdata/subpkg/pkg2"),
 							File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
 							Range: SourceRange{
 								Start: SourcePosition{Line: 15, Column: 3},
@@ -381,6 +402,7 @@ func TestSubPackages(t *testing.T) {
 									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
 									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test1",
 									Package:         "listests/testdata/subpkg/pkg2",
+									Directory:       absPath(t, "./testdata/subpkg/pkg2"),
 									File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
 									Range: SourceRange{
 										Start: SourcePosition{Line: 16, Column: 4},
@@ -394,6 +416,7 @@ func TestSubPackages(t *testing.T) {
 									FullName:        "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
 									FullDisplayName: "TestSome/sub-test1/sub-sub-test2/sub-sub-sub-test2",
 									Package:         "listests/testdata/subpkg/pkg2",
+									Directory:       absPath(t, "./testdata/subpkg/pkg2"),
 									File:            absPath(t, "./testdata/subpkg/pkg2/some_test.go"),
 									Range: SourceRange{
 										Start: SourcePosition{Line: 20, Column: 4},

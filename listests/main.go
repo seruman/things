@@ -152,6 +152,9 @@ type TestInfo struct {
 	// Package name
 	Package string `json:"package"`
 
+	// Directory where the test file is located
+	Directory string `json:"directory"`
+
 	// File where the test is defined
 	File string `json:"file"`
 
@@ -225,9 +228,10 @@ func findTestsInPackages(
 			moduleName := pkg.Module.Path
 			pkgPath := pkg.PkgPath
 			packageName := strings.TrimPrefix(pkgPath, moduleName+"/")
+			directory := pkg.Dir
 
 			logger("Processing %s in package %s...\n", filename, packageName)
-			tests := findTestsInFile(file, pkg.Fset, filename, packageName)
+			tests := findTestsInFile(file, pkg.Fset, filename, packageName, directory)
 			allTests = append(allTests, tests...)
 		}
 	}
@@ -235,7 +239,7 @@ func findTestsInPackages(
 	return allTests, nil
 }
 
-func findTestsInFile(file *ast.File, fset *token.FileSet, filename, pkgName string) []*TestInfo {
+func findTestsInFile(file *ast.File, fset *token.FileSet, filename, pkgName string, dir string) []*TestInfo {
 	var tests []*TestInfo
 
 	for _, decl := range file.Decls {
@@ -252,10 +256,11 @@ func findTestsInFile(file *ast.File, fset *token.FileSet, filename, pkgName stri
 				end := fset.Position(funcDecl.End())
 
 				test := &TestInfo{
-					Name:     testName,
-					FullName: testName,
-					Package:  pkgName,
-					File:     filename,
+					Name:      testName,
+					FullName:  testName,
+					Package:   pkgName,
+					Directory: dir,
+					File:      filename,
 					// Start:            start.Line,
 					// Column:           start.Column,
 					Range: SourceRange{
@@ -351,6 +356,7 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 					FullName:        fullName,
 					FullDisplayName: sanitizedFullName,
 					Package:         pkgName,
+					Directory:       parentTest.Directory,
 					File:            filename,
 					Range: SourceRange{
 						Start: SourcePosition{
@@ -377,10 +383,11 @@ func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSe
 			subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
 			fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
 			subTest = &TestInfo{
-				Name:     subtestName,
-				FullName: fullName,
-				Package:  pkgName,
-				File:     filename,
+				Name:      subtestName,
+				FullName:  fullName,
+				Package:   pkgName,
+				Directory: parentTest.Directory,
+				File:      filename,
 				Range: SourceRange{
 					Start: SourcePosition{
 						Line:   start.Line,
