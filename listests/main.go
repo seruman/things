@@ -12,6 +12,7 @@ import (
 	"iter"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -113,13 +114,23 @@ func realmain(
 
 	for test := range iterTests(tests) {
 		cwd, _ := os.Getwd()
-		relativePath := fmt.Sprintf(".%v", strings.TrimPrefix(test.File, cwd))
+		relativePath, err := filepath.Rel(cwd, test.File)
+		if err != nil {
+			return fmt.Errorf("failed to get relative file path: %w", err)
+		}
+
+		relativeDir, err := filepath.Rel(cwd, test.Directory)
+		if err != nil {
+			return fmt.Errorf("failed to get relative directory: %w", err)
+		}
 		templateData := struct {
 			TestInfo
-			RelativeFileName string
+			RelativeFileName  string
+			RelativeDirectory string
 		}{
-			TestInfo:         *test,
-			RelativeFileName: relativePath,
+			TestInfo:          *test,
+			RelativeFileName:  relativePath,
+			RelativeDirectory: relativeDir,
 		}
 
 		var buf bytes.Buffer
