@@ -19,6 +19,7 @@ import (
 	"text/template"
 	"unicode"
 
+	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -53,12 +54,14 @@ func realmain(
 		flagVerbose bool
 		flagVimgrep bool
 		flagFormat  string
+		flagDir     string
 	)
 
 	fs.StringVar(&flagTags, "tags", "", "comma-separated list of build tags to apply")
 	fs.BoolVar(&flagVerbose, "v", false, "verbose mode")
 	fs.BoolVar(&flagVimgrep, "vimgrep", false, "output in ripgrep's vimgrep format")
 	fs.StringVar(&flagFormat, "format", "", "output format")
+	fs.StringVar(&flagDir, "dir", ".", "directory to run in")
 
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: %s [options] [packages...]\n", fs.Name())
@@ -90,7 +93,7 @@ func realmain(
 	logger("Discovering tests...\n")
 	tests, err := findTestsInPackages(
 		ctx,
-		".",
+		flagDir,
 		patterns,
 		buildTags,
 		logger,
@@ -106,7 +109,7 @@ func realmain(
 			return fmt.Errorf("cannot use -vimgrep and -format together")
 		}
 
-		flagFormat = "{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.Start.Column}}:{{.PackageName}}:{{.FullName}}"
+		flagFormat = "{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.Start.Column}}:{{.Package}}:{{.FullName}}"
 	}
 
 	if flagFormat == "" {
@@ -234,79 +237,228 @@ func findTestsInPackages(
 			continue
 		}
 
-		// TODO:
-		// fmt.Println("Errors:", pkg.Errors)
-		// fmt.Println("TypeErrors:", pkg.TypeErrors)
-
+		var testFiles []*ast.File
 		for _, file := range pkg.Syntax {
 			filename := pkg.Fset.Position(file.Pos()).Filename
-			if !strings.HasSuffix(filename, "_test.go") {
-				continue
+			if strings.HasSuffix(filename, "_test.go") {
+				testFiles = append(testFiles, file)
 			}
-
-			moduleName := pkg.Module.Path
-			pkgPath := pkg.PkgPath
-			packageName := strings.TrimPrefix(pkgPath, moduleName+"/")
-			directory := pkg.Dir
-
-			logger("Processing %s in package %s...\n", filename, packageName)
-			tests := findTestsInFile(file, pkg.Fset, filename, packageName, directory)
-			allTests = append(allTests, tests...)
 		}
+
+		if len(testFiles) == 0 {
+			continue
+		}
+
+		moduleName := pkg.Module.Path
+		pkgPath := pkg.PkgPath
+		packageName := strings.TrimPrefix(pkgPath, moduleName+"/")
+		directory := pkg.Dir
+
+		inspect := inspector.New(testFiles)
+
+		tests := func() []*TestInfo {
+			finder := newTestFinder(pkg.Fset, packageName, directory, logger)
+			return finder.find(inspect)
+		}()
+		allTests = append(allTests, tests...)
 	}
 
 	return allTests, nil
 }
 
-func findTestsInFile(file *ast.File, fset *token.FileSet, filename, pkgName string, dir string) []*TestInfo {
-	var tests []*TestInfo
+type testFinder struct {
+	fset      *token.FileSet
+	pkgName   string
+	directory string
+	logger    func(string, ...any)
 
-	for _, decl := range file.Decls {
-		funcDecl, ok := decl.(*ast.FuncDecl)
-		if !ok || funcDecl.Name == nil {
-			continue
-		}
+	allTests []*TestInfo
+	testMap  map[ast.Node]*TestInfo
+}
 
-		if strings.HasPrefix(funcDecl.Name.Name, "Test") {
-			if isTestFunction(funcDecl) {
-				testName := funcDecl.Name.Name
+func newTestFinder(fset *token.FileSet, pkgName, dir string, logger func(string, ...any)) *testFinder {
+	return &testFinder{
+		fset:      fset,
+		pkgName:   pkgName,
+		directory: dir,
+		logger:    logger,
+		allTests:  []*TestInfo{},
+		testMap:   make(map[ast.Node]*TestInfo),
+	}
+}
 
-				start := fset.Position(funcDecl.Name.Pos())
-				end := fset.Position(funcDecl.End())
-
-				test := &TestInfo{
-					Name:      testName,
-					FullName:  testName,
-					Package:   pkgName,
-					Directory: dir,
-					File:      filename,
-					// Start:            start.Line,
-					// Column:           start.Column,
-					Range: SourceRange{
-						Start: SourcePosition{
-							Line:   start.Line,
-							Column: start.Column,
-						},
-						End: SourcePosition{
-							Line:   end.Line,
-							Column: end.Column,
-						},
-					},
-					HasGeneratedName: false,
-					IsSubtest:        false,
-					SubTests:         nil,
-				}
-
-				if funcDecl.Body != nil {
-					findSubtests(funcDecl.Body, test, fset, filename, pkgName)
-				}
-
-				tests = append(tests, test)
-			}
-		}
+func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
+	nodeFilter := []ast.Node{
+		(*ast.FuncDecl)(nil),
+		(*ast.CallExpr)(nil),
 	}
 
-	return tests
+	inspect.WithStack(nodeFilter, func(node ast.Node, push bool, stack []ast.Node) bool {
+		if !push {
+			return true
+		}
+
+		switch n := node.(type) {
+		case *ast.FuncDecl:
+			tf.handleFuncDecl(n)
+		case *ast.CallExpr:
+			tf.handleCallExpr(n, stack)
+		}
+
+		return true
+	})
+
+	return tf.allTests
+}
+
+func (tf *testFinder) handleFuncDecl(n *ast.FuncDecl) {
+	if n.Name == nil || !strings.HasPrefix(n.Name.Name, "Test") || !isTestFunction(n) {
+		return
+	}
+
+	filename := tf.fset.Position(n.Pos()).Filename
+	tf.logger("Processing %s in package %s...\n", filename, tf.pkgName)
+
+	start := tf.fset.Position(n.Name.Pos())
+	end := tf.fset.Position(n.End())
+
+	test := &TestInfo{
+		Name:      n.Name.Name,
+		FullName:  n.Name.Name,
+		Package:   tf.pkgName,
+		Directory: tf.directory,
+		File:      filename,
+		Range: SourceRange{
+			Start: SourcePosition{
+				Line:   start.Line,
+				Column: start.Column,
+			},
+			End: SourcePosition{
+				Line:   end.Line,
+				Column: end.Column,
+			},
+		},
+		HasGeneratedName: false,
+		IsSubtest:        false,
+		SubTests:         nil,
+	}
+
+	tf.testMap[n] = test
+	tf.allTests = append(tf.allTests, test)
+}
+
+func (tf *testFinder) handleCallExpr(n *ast.CallExpr, stack []ast.Node) {
+	if !tf.isRunCall(n) {
+		return
+	}
+
+	parentTest := tf.findParentTest(stack)
+	if parentTest == nil {
+		return
+	}
+
+	subTest := tf.createSubTest(n, parentTest)
+	if subTest == nil {
+		return
+	}
+
+	parentTest.SubTests = append(parentTest.SubTests, subTest)
+
+	// Map the function literal body to this subtest so nested t.Run calls can find it
+	if funcLit, ok := n.Args[1].(*ast.FuncLit); ok && funcLit.Body != nil {
+		tf.testMap[funcLit.Body] = subTest
+	}
+}
+
+func (tf *testFinder) isRunCall(n *ast.CallExpr) bool {
+	selExpr, ok := n.Fun.(*ast.SelectorExpr)
+	return ok && selExpr.Sel.Name == "Run" && len(n.Args) >= 2
+}
+
+func (tf *testFinder) findParentTest(stack []ast.Node) *TestInfo {
+	for i := len(stack) - 1; i >= 0; i-- {
+		if test, exists := tf.testMap[stack[i]]; exists {
+			return test
+		}
+	}
+	return nil
+}
+
+func (tf *testFinder) createSubTest(n *ast.CallExpr, parentTest *TestInfo) *TestInfo {
+	filename := tf.fset.Position(n.Pos()).Filename
+	start := tf.fset.Position(n.Pos())
+	end := tf.fset.Position(n.End())
+
+	switch arg := n.Args[0].(type) {
+	case *ast.BasicLit:
+		if arg.Kind == token.STRING {
+			return tf.createLiteralSubTest(arg, parentTest, filename, start, end)
+		}
+	default:
+		return tf.createGeneratedSubTest(arg, parentTest, filename, start, end)
+	}
+	return nil
+}
+
+func (tf *testFinder) createLiteralSubTest(arg *ast.BasicLit, parentTest *TestInfo, filename string, start, end token.Position) *TestInfo {
+	subtestName := strings.Trim(arg.Value, "\"'`")
+	sanitizedSubtestName := rewriteSubTestName(subtestName)
+
+	fullName := parentTest.FullName + "/" + subtestName
+	sanitizedFullName := parentTest.FullName + "/" + sanitizedSubtestName
+
+	return &TestInfo{
+		Name:            subtestName,
+		DisplayName:     sanitizedSubtestName,
+		FullName:        fullName,
+		FullDisplayName: sanitizedFullName,
+		Package:         tf.pkgName,
+		Directory:       tf.directory,
+		File:            filename,
+		Range: SourceRange{
+			Start: SourcePosition{
+				Line:   start.Line,
+				Column: start.Column,
+			},
+			End: SourcePosition{
+				Line:   end.Line,
+				Column: end.Column,
+			},
+		},
+		HasGeneratedName: false,
+		IsSubtest:        true,
+	}
+}
+
+func (tf *testFinder) createGeneratedSubTest(arg ast.Expr, parentTest *TestInfo, filename string, start, end token.Position) *TestInfo {
+	var buf bytes.Buffer
+	err := printer.Fprint(&buf, tf.fset, arg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error printing argument: %v\n", err)
+		return nil
+	}
+	subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
+	fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
+
+	return &TestInfo{
+		Name:      subtestName,
+		FullName:  fullName,
+		Package:   tf.pkgName,
+		Directory: tf.directory,
+		File:      filename,
+		Range: SourceRange{
+			Start: SourcePosition{
+				Line:   start.Line,
+				Column: start.Column,
+			},
+			End: SourcePosition{
+				Line:   end.Line,
+				Column: end.Column,
+			},
+		},
+		HasGeneratedName: true,
+		IsSubtest:        true,
+	}
 }
 
 // Can do better by checking the parameter type but this is faster and good
@@ -333,107 +485,6 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 	}
 
 	return false
-}
-
-func findSubtests(block *ast.BlockStmt, parentTest *TestInfo, fset *token.FileSet, filename, pkgName string) {
-	ast.Inspect(block, func(n ast.Node) bool {
-		callExpr, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-
-		selExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-
-		if selExpr.Sel.Name != "Run" {
-			return true
-		}
-
-		// NOTE: no type check here.
-		if len(callExpr.Args) < 2 {
-			return true
-		}
-
-		start := fset.Position(callExpr.Pos())
-		end := fset.Position(callExpr.End())
-
-		var subTest *TestInfo
-		switch arg := callExpr.Args[0].(type) {
-		case *ast.BasicLit:
-			if arg.Kind == token.STRING {
-				subtestName := strings.Trim(arg.Value, "\"'`")
-				sanitizedSubtestName := rewriteSubTestName(subtestName)
-
-				fullName := parentTest.FullName + "/" + subtestName
-				sanitizedFullName := parentTest.FullName + "/" + sanitizedSubtestName
-
-				subTest = &TestInfo{
-					Name:            subtestName,
-					DisplayName:     sanitizedSubtestName,
-					FullName:        fullName,
-					FullDisplayName: sanitizedFullName,
-					Package:         pkgName,
-					Directory:       parentTest.Directory,
-					File:            filename,
-					Range: SourceRange{
-						Start: SourcePosition{
-							Line:   start.Line,
-							Column: start.Column,
-						},
-						End: SourcePosition{
-							Line:   end.Line,
-							Column: end.Column,
-						},
-					},
-					HasGeneratedName: false,
-					IsSubtest:        true,
-				}
-			}
-		default:
-			// TODO: how to report runtime generated names?
-			var buf bytes.Buffer
-			err := printer.Fprint(&buf, fset, arg)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error printing argument: %v\n", err)
-				return true
-			}
-			subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
-			fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
-			subTest = &TestInfo{
-				Name:      subtestName,
-				FullName:  fullName,
-				Package:   pkgName,
-				Directory: parentTest.Directory,
-				File:      filename,
-				Range: SourceRange{
-					Start: SourcePosition{
-						Line:   start.Line,
-						Column: start.Column,
-					},
-					End: SourcePosition{
-						Line:   end.Line,
-						Column: end.Column,
-					},
-				},
-				HasGeneratedName: true,
-				IsSubtest:        true,
-			}
-		}
-
-		if subTest != nil {
-			parentTest.SubTests = append(parentTest.SubTests, subTest)
-
-			if funcLit, ok := callExpr.Args[1].(*ast.FuncLit); ok && funcLit.Body != nil {
-				findSubtests(funcLit.Body, subTest, fset, filename, pkgName)
-			}
-
-			return false
-		}
-
-		return true
-	})
 }
 
 func iterTests(tests []*TestInfo) iter.Seq[*TestInfo] {
