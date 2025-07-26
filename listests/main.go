@@ -88,7 +88,13 @@ func realmain(
 	}
 
 	logger("Discovering tests...\n")
-	tests, err := findTestsInPackages(ctx, patterns, buildTags, logger)
+	tests, err := findTestsInPackages(
+		ctx,
+		".",
+		patterns,
+		buildTags,
+		logger,
+	)
 	if err != nil {
 		return err
 	}
@@ -194,6 +200,7 @@ type SourcePosition struct {
 
 func findTestsInPackages(
 	ctx context.Context,
+	directory string,
 	patterns []string,
 	buildTags []string,
 	logger func(string, ...any),
@@ -204,6 +211,7 @@ func findTestsInPackages(
 	}
 
 	cfg := &packages.Config{
+		Dir:        directory,
 		Mode:       packages.LoadFiles | packages.NeedSyntax | packages.NeedForTest | packages.NeedModule,
 		Context:    ctx,
 		Tests:      true,
