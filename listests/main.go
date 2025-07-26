@@ -266,6 +266,12 @@ func findTestsInPackages(
 	return allTests, nil
 }
 
+type tableTestInfo struct {
+	name  string
+	start token.Position
+	end   token.Position
+}
+
 type testFinder struct {
 	fset      *token.FileSet
 	pkgName   string
@@ -432,9 +438,9 @@ func (tf *testFinder) createSubTest(n *ast.CallExpr, parentTest *TestInfo) *Test
 			return tf.createNamedSubTest(subtestName, parentTest, filename, start, end)
 		}
 	case *ast.SelectorExpr:
-		if testNames := tf.extractTableTestNames(arg); len(testNames) > 0 {
-			for _, name := range testNames {
-				subTest := tf.createNamedSubTest(name, parentTest, filename, start, end)
+		if tableTests := tf.extractTableTestNames(arg); len(tableTests) > 0 {
+			for _, tt := range tableTests {
+				subTest := tf.createNamedSubTest(tt.name, parentTest, filename, tt.start, tt.end)
 				parentTest.SubTests = append(parentTest.SubTests, subTest)
 			}
 			return nil
@@ -446,7 +452,7 @@ func (tf *testFinder) createSubTest(n *ast.CallExpr, parentTest *TestInfo) *Test
 	return nil
 }
 
-func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []string {
+func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableTestInfo {
 	// Get the variable name e.g. "c" from `c.name`.
 	varIdent, ok := selector.X.(*ast.Ident)
 	if !ok {
@@ -476,16 +482,22 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []string
 		return nil
 	}
 
-	var names []string
+	var tableTests []tableTestInfo
 	for _, elt := range compLit.Elts {
 		if structLit, ok := elt.(*ast.CompositeLit); ok {
 			if name := tf.extractFieldValue(structLit, fieldName); name != "" {
-				names = append(names, name)
+				start := tf.fset.Position(structLit.Pos())
+				end := tf.fset.Position(structLit.End())
+				tableTests = append(tableTests, tableTestInfo{
+					name:  name,
+					start: start,
+					end:   end,
+				})
 			}
 		}
 	}
 
-	return names
+	return tableTests
 }
 
 func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName string) string {
