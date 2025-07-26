@@ -272,18 +272,20 @@ type testFinder struct {
 	directory string
 	logger    func(string, ...any)
 
-	allTests []*TestInfo
-	testMap  map[ast.Node]*TestInfo
+	allTests    []*TestInfo
+	testMap     map[ast.Node]*TestInfo
+	assignments map[string]ast.Node
 }
 
 func newTestFinder(fset *token.FileSet, pkgName, dir string, logger func(string, ...any)) *testFinder {
 	return &testFinder{
-		fset:      fset,
-		pkgName:   pkgName,
-		directory: dir,
-		logger:    logger,
-		allTests:  []*TestInfo{},
-		testMap:   make(map[ast.Node]*TestInfo),
+		fset:        fset,
+		pkgName:     pkgName,
+		directory:   dir,
+		logger:      logger,
+		allTests:    []*TestInfo{},
+		testMap:     make(map[ast.Node]*TestInfo),
+		assignments: make(map[string]ast.Node),
 	}
 }
 
@@ -291,6 +293,8 @@ func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
 	nodeFilter := []ast.Node{
 		(*ast.FuncDecl)(nil),
 		(*ast.CallExpr)(nil),
+		(*ast.AssignStmt)(nil),
+		(*ast.RangeStmt)(nil),
 	}
 
 	inspect.WithStack(nodeFilter, func(node ast.Node, push bool, stack []ast.Node) bool {
@@ -303,6 +307,10 @@ func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
 			tf.handleFuncDecl(n)
 		case *ast.CallExpr:
 			tf.handleCallExpr(n, stack)
+		case *ast.AssignStmt:
+			tf.handleAssignStmt(n)
+		case *ast.RangeStmt:
+			tf.handleRangeStmt(n)
 		}
 
 		return true
@@ -311,7 +319,34 @@ func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
 	return tf.allTests
 }
 
+func (tf *testFinder) handleAssignStmt(n *ast.AssignStmt) {
+	// cases := []struct{...}
+	if len(n.Lhs) == 1 && len(n.Rhs) == 1 {
+		if ident, ok := n.Lhs[0].(*ast.Ident); ok {
+			tf.assignments[ident.Name] = n.Rhs[0]
+		}
+	}
+}
+
+func (tf *testFinder) handleRangeStmt(n *ast.RangeStmt) {
+	if n.Key != nil {
+		if ident, ok := n.Key.(*ast.Ident); ok {
+			tf.assignments[ident.Name] = n.X
+		}
+	}
+	if n.Value != nil {
+		if ident, ok := n.Value.(*ast.Ident); ok {
+			tf.assignments[ident.Name] = n.X
+		}
+	}
+}
+
 func (tf *testFinder) handleFuncDecl(n *ast.FuncDecl) {
+	// New function, clear assignments.
+	// TODO: If subtest is using a variable from an outer scope, information is
+	// lost.
+	tf.assignments = make(map[string]ast.Node)
+
 	if n.Name == nil || !strings.HasPrefix(n.Name.Name, "Test") || !isTestFunction(n) {
 		return
 	}
@@ -364,7 +399,8 @@ func (tf *testFinder) handleCallExpr(n *ast.CallExpr, stack []ast.Node) {
 
 	parentTest.SubTests = append(parentTest.SubTests, subTest)
 
-	// Map the function literal body to this subtest so nested t.Run calls can find it
+	// Map the function literal body to this subtest so nested t.Run calls can
+	// find it.
 	if funcLit, ok := n.Args[1].(*ast.FuncLit); ok && funcLit.Body != nil {
 		tf.testMap[funcLit.Body] = subTest
 	}
@@ -392,24 +428,93 @@ func (tf *testFinder) createSubTest(n *ast.CallExpr, parentTest *TestInfo) *Test
 	switch arg := n.Args[0].(type) {
 	case *ast.BasicLit:
 		if arg.Kind == token.STRING {
-			return tf.createLiteralSubTest(arg, parentTest, filename, start, end)
+			subtestName := strings.Trim(arg.Value, "\"'`")
+			return tf.createNamedSubTest(subtestName, parentTest, filename, start, end)
 		}
+	case *ast.SelectorExpr:
+		if testNames := tf.extractTableTestNames(arg); len(testNames) > 0 {
+			for _, name := range testNames {
+				subTest := tf.createNamedSubTest(name, parentTest, filename, start, end)
+				parentTest.SubTests = append(parentTest.SubTests, subTest)
+			}
+			return nil
+		}
+		return tf.createGeneratedSubTest(arg, parentTest, filename, start, end)
 	default:
 		return tf.createGeneratedSubTest(arg, parentTest, filename, start, end)
 	}
 	return nil
 }
 
-func (tf *testFinder) createLiteralSubTest(arg *ast.BasicLit, parentTest *TestInfo, filename string, start, end token.Position) *TestInfo {
-	subtestName := strings.Trim(arg.Value, "\"'`")
-	sanitizedSubtestName := rewriteSubTestName(subtestName)
+func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []string {
+	// Get the variable name e.g. "c" from `c.name`.
+	varIdent, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
 
-	fullName := parentTest.FullName + "/" + subtestName
-	sanitizedFullName := parentTest.FullName + "/" + sanitizedSubtestName
+	fieldName := selector.Sel.Name
+
+	rangeExpr, ok := tf.assignments[varIdent.Name]
+	if !ok {
+		return nil
+	}
+
+	var sliceExpr ast.Node
+	if ident, ok := rangeExpr.(*ast.Ident); ok {
+		// Ranging over a variable, e.g. `for _, c := range cases`.
+		sliceExpr, ok = tf.assignments[ident.Name]
+		if !ok {
+			return nil
+		}
+	} else {
+		sliceExpr = rangeExpr
+	}
+
+	compLit, ok := sliceExpr.(*ast.CompositeLit)
+	if !ok {
+		return nil
+	}
+
+	var names []string
+	for _, elt := range compLit.Elts {
+		if structLit, ok := elt.(*ast.CompositeLit); ok {
+			if name := tf.extractFieldValue(structLit, fieldName); name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+
+	return names
+}
+
+func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName string) string {
+	for _, elt := range structLit.Elts {
+		kvExpr, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+
+		key, ok := kvExpr.Key.(*ast.Ident)
+		if !ok || key.Name != fieldName {
+			continue
+		}
+
+		if lit, ok := kvExpr.Value.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			return strings.Trim(lit.Value, "\"'`")
+		}
+	}
+	return ""
+}
+
+func (tf *testFinder) createNamedSubTest(name string, parentTest *TestInfo, filename string, start, end token.Position) *TestInfo {
+	sanitizedName := rewriteSubTestName(name)
+	fullName := parentTest.FullName + "/" + name
+	sanitizedFullName := parentTest.FullName + "/" + sanitizedName
 
 	return &TestInfo{
-		Name:            subtestName,
-		DisplayName:     sanitizedSubtestName,
+		Name:            name,
+		DisplayName:     sanitizedName,
 		FullName:        fullName,
 		FullDisplayName: sanitizedFullName,
 		Package:         tf.pkgName,
