@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -10,21 +9,24 @@ import (
 )
 
 func TestFindTestsInPackages(t *testing.T) {
-	modfs := os.DirFS("./internal/testmodule")
-
-	dir := t.TempDir()
-	absPath := func(path string) string {
-		return filepath.Join(dir, path)
+	const d = "./internal/testmodule"
+	dir, err := filepath.Abs(d)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if err := os.CopyFS(dir, modfs); err != nil {
-		t.Fatalf("copy-fs: %v", err)
+	absPath := func(p string) string {
+		abs, err := filepath.Abs(filepath.Join(dir, p))
+		if err != nil {
+			t.Fatalf("%q: %v", p, err)
+		}
+		return abs
 	}
 
 	logfn := func(string, ...any) {}
 	got, err := findTestsInPackages(
 		t.Context(),
-		dir,
+		"./internal/testmodule",
 		[]string{"./..."},
 		nil,
 		logfn,
