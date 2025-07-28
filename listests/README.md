@@ -58,11 +58,11 @@ function gotaf
         set tags_opt "-tags=$_flag_tags"
     end
 
-    set -l format "{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
+    set -l format "{{.RelativeDirectory}}:{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
     set -l lines ( listests --format="$format" $tags_opt $pkgs | fzf --delimiter : \
         --multi \
-        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {3}:{4} {2}' \
-        --preview-window '70%,~4,+{3}+4/4' \
+        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {4}:{5} {3}' \
+        --preview-window '70%,~4,+{4}+4/4' \
         --height 60%
     )
     if test -z "$lines"
@@ -116,11 +116,11 @@ gotaf() {
         tags_opt="-tags=$tags"
     fi
     
-    local format="{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
+    local format="{{.RelativeDirectory}}:{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
     local lines=($(listests --format="$format" $tags_opt "${pkgs[@]}" | fzf --delimiter : \
         --multi \
-        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {3}:{4} {2}' \
-        --preview-window '70%,~4,+{3}+4/4' \
+        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {4}:{5} {3}' \
+        --preview-window '70%,~4,+{4}+4/4' \
         --height 60%
     ))
     
