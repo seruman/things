@@ -58,10 +58,10 @@ function gotaf
         set tags_opt "-tags=$_flag_tags"
     end
 
-    set -l format "{{.RelativeDirectory}}:{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
+    set -l format "{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
     set -l lines ( listests --format="$format" $tags_opt $pkgs | fzf --delimiter : \
         --multi \
-        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {4}:{5} {3}' \
+        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {3}:{4} {2}' \
         --preview-window '70%,~4,+{4}+4/4' \
         --height 60%
     )
@@ -72,10 +72,12 @@ function gotaf
     set -l tests
     set -l packages
     for line in $lines
-        set -l testname ( echo $line | cut -d : -f 2 )
-        set -l pkg ( echo $line | cut -d : -f 1 )
+        set -l testname ( echo $line | cut -d : -f 1 )
+        set -l filename ( echo $line | cut -d : -f 2 )
+        set -l dir "./$(path dirname $filename)"
+
         set tests $tests $testname
-        set packages $packages "./$pkg"
+        set packages $packages "$dir"
     end
 
     set packages ( printf '%s\n' $packages | sort -u )
@@ -85,7 +87,7 @@ function gotaf
         set gotest_tags -tags "$_flag_tags"
     end
 
-    gotest -v $gotest_tags $packages -count=1 -run="$(string join '|' $tests)"
+    go test -v $gotest_tags $packages -count=1 -run="$(string join '|' $tests)"
 end
 ```
 
@@ -116,10 +118,10 @@ gotaf() {
         tags_opt="-tags=$tags"
     fi
     
-    local format="{{.RelativeDirectory}}:{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
+    local format="{{.FullDisplayName}}:{{.RelativeFileName}}:{{.Range.Start.Line}}:{{.Range.End.Line}}"
     local lines=($(listests --format="$format" $tags_opt "${pkgs[@]}" | fzf --delimiter : \
         --multi \
-        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {4}:{5} {3}' \
+        --preview 'echo $FZF_COLUMNS; bat --style=full --color=always --terminal-width $FZF_COLUMNS --highlight-line {3}:{4} {2}' \
         --preview-window '70%,~4,+{4}+4/4' \
         --height 60%
     ))
@@ -131,10 +133,11 @@ gotaf() {
     local tests=()
     local packages=()
     for line in "${lines[@]}"; do
-        local testname=$(echo "$line" | cut -d : -f 2)
-        local pkg=$(echo "$line" | cut -d : -f 1)
+        local testname=$(echo "$line" | cut -d : -f 1)
+        local filename=$(echo "$line" | cut -d : -f 2)
+        local dir="./$(dirname "$filename")"
         tests+=("$testname")
-        packages+=("./$pkg")
+        packages+=("$dir")
     done
     
     packages=($(printf '%s\n' "${packages[@]}" | sort -u))
@@ -145,6 +148,6 @@ gotaf() {
     fi
     
     local tests_pattern=$(IFS='|'; echo "${tests[*]}")
-    gotest -v "${gotest_tags[@]}" "${packages[@]}" -count=1 -run="$tests_pattern"
+    go test -v "${gotest_tags[@]}" "${packages[@]}" -count=1 -run="$tests_pattern"
 }
 ```
