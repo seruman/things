@@ -364,11 +364,13 @@ func (tf *testFinder) handleFuncDecl(n *ast.FuncDecl) *TestInfo {
 	end := tf.fset.Position(n.End())
 
 	test := &TestInfo{
-		Name:      n.Name.Name,
-		FullName:  n.Name.Name,
-		Package:   tf.pkgName,
-		Directory: tf.directory,
-		File:      filename,
+		Name:            n.Name.Name,
+		DisplayName:     n.Name.Name,
+		FullName:        n.Name.Name,
+		FullDisplayName: n.Name.Name,
+		Package:         tf.pkgName,
+		Directory:       tf.directory,
+		File:            filename,
 		Range: SourceRange{
 			Start: SourcePosition{
 				Line:   start.Line,
@@ -558,13 +560,16 @@ func (tf *testFinder) createGeneratedSubTest(arg ast.Expr, parentTest *TestInfo,
 	}
 	subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
 	fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
+	fullDisplayName := fmt.Sprintf("%s/%s", parentTest.FullDisplayName, subtestName)
 
 	return &TestInfo{
-		Name:      subtestName,
-		FullName:  fullName,
-		Package:   tf.pkgName,
-		Directory: tf.directory,
-		File:      filename,
+		Name:             subtestName,
+		DisplayName:      subtestName,
+		FullName:         fullName,
+		FullDisplayName:  fullDisplayName,
+		Package:          tf.pkgName,
+		Directory:        tf.directory,
+		File:             filename,
 		Range: SourceRange{
 			Start: SourcePosition{
 				Line:   start.Line,
