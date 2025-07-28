@@ -249,9 +249,13 @@ func findTestsInPackages(
 			continue
 		}
 
-		moduleName := pkg.Module.Path
+		// TODO: To not get panic when running on for file(s) not in a module.
 		pkgPath := pkg.PkgPath
-		packageName := strings.TrimPrefix(pkgPath, moduleName+"/")
+		packageName := pkgPath
+		if pkg.Module != nil {
+			moduleName := pkg.Module.Path
+			packageName = strings.TrimPrefix(pkgPath, moduleName+"/")
+		}
 		directory := pkg.Dir
 
 		inspect := inspector.New(testFiles)
@@ -571,17 +575,17 @@ func (tf *testFinder) extractStructFieldPositions(typeExpr ast.Expr) map[string]
 		return positions
 	}
 
-	var pos int
-	for _, field := range structType.Fields.List {
-		pos++
-
+	for pos, field := range structType.Fields.List {
 		if len(field.Names) == 0 {
-			// Anonymous.
+			// Anonymous field.
+			pos++
 			continue
 		}
 
+		// Named fields.
 		for _, name := range field.Names {
 			positions[name.Name] = pos
+			pos++
 		}
 	}
 

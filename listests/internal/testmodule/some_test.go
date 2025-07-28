@@ -91,7 +91,7 @@ func TestTableTestsWithinSubTestsWithPositionals(t *testing.T) {
 	t.Run("t1", func(t *testing.T) {
 		cases := []struct {
 			input string
-			want  any
+			want  string
 		}{
 			{"tt1", "tt1"},
 			{"tt2 with space", "tt2 with space"},
