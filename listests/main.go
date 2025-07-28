@@ -269,25 +269,58 @@ type tableTestInfo struct {
 	end   token.Position
 }
 
+type scope struct {
+	assignments map[string]ast.Node
+	parent      *scope
+}
+
 type testFinder struct {
 	fset      *token.FileSet
 	pkgName   string
 	directory string
 	logger    func(string, ...any)
 
-	testMap     map[ast.Node]*TestInfo
-	assignments map[string]ast.Node
+	testMap      map[ast.Node]*TestInfo
+	currentScope *scope
 }
 
 func newTestFinder(fset *token.FileSet, pkgName, dir string, logger func(string, ...any)) *testFinder {
 	return &testFinder{
-		fset:        fset,
-		pkgName:     pkgName,
-		directory:   dir,
-		logger:      logger,
-		testMap:     make(map[ast.Node]*TestInfo),
-		assignments: make(map[string]ast.Node),
+		fset:      fset,
+		pkgName:   pkgName,
+		directory: dir,
+		logger:    logger,
+		testMap:   make(map[ast.Node]*TestInfo),
+		currentScope: &scope{
+			assignments: make(map[string]ast.Node),
+			parent:      nil,
+		},
 	}
+}
+
+func (tf *testFinder) pushScope() {
+	newScope := &scope{
+		assignments: make(map[string]ast.Node),
+		parent:      tf.currentScope,
+	}
+	tf.currentScope = newScope
+}
+
+func (tf *testFinder) popScope() {
+	if tf.currentScope.parent != nil {
+		tf.currentScope = tf.currentScope.parent
+	}
+}
+
+func (tf *testFinder) lookupAssignment(name string) (ast.Node, bool) {
+	scope := tf.currentScope
+	for scope != nil {
+		if node, ok := scope.assignments[name]; ok {
+			return node, true
+		}
+		scope = scope.parent
+	}
+	return nil, false
 }
 
 func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
@@ -295,27 +328,41 @@ func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
 
 	nodeFilter := []ast.Node{
 		(*ast.FuncDecl)(nil),
+		(*ast.FuncLit)(nil),
 		(*ast.CallExpr)(nil),
 		(*ast.AssignStmt)(nil),
 		(*ast.RangeStmt)(nil),
 	}
 
 	inspect.WithStack(nodeFilter, func(node ast.Node, push bool, stack []ast.Node) bool {
-		if !push {
-			return true
-		}
-
 		switch n := node.(type) {
 		case *ast.FuncDecl:
-			if test := tf.handleFuncDecl(n); test != nil {
-				allTests = append(allTests, test)
+			if push {
+				if test := tf.handleFuncDecl(n); test != nil {
+					allTests = append(allTests, test)
+				}
+			} else {
+				tf.popScope()
+			}
+
+		case *ast.FuncLit:
+			if push {
+				tf.pushScope()
+			} else {
+				tf.popScope()
 			}
 		case *ast.CallExpr:
-			tf.handleCallExpr(n, stack)
+			if push {
+				tf.handleCallExpr(n, stack)
+			}
 		case *ast.AssignStmt:
-			tf.handleAssignStmt(n)
+			if push {
+				tf.handleAssignStmt(n)
+			}
 		case *ast.RangeStmt:
-			tf.handleRangeStmt(n)
+			if push {
+				tf.handleRangeStmt(n)
+			}
 		}
 
 		return true
@@ -328,7 +375,7 @@ func (tf *testFinder) handleAssignStmt(n *ast.AssignStmt) {
 	// cases := []struct{...}
 	if len(n.Lhs) == 1 && len(n.Rhs) == 1 {
 		if ident, ok := n.Lhs[0].(*ast.Ident); ok {
-			tf.assignments[ident.Name] = n.Rhs[0]
+			tf.currentScope.assignments[ident.Name] = n.Rhs[0]
 		}
 	}
 }
@@ -336,22 +383,20 @@ func (tf *testFinder) handleAssignStmt(n *ast.AssignStmt) {
 func (tf *testFinder) handleRangeStmt(n *ast.RangeStmt) {
 	if n.Key != nil {
 		if ident, ok := n.Key.(*ast.Ident); ok {
-			tf.assignments[ident.Name] = n.X
+			tf.currentScope.assignments[ident.Name] = n.X
 		}
 	}
 
 	if n.Value != nil {
 		if ident, ok := n.Value.(*ast.Ident); ok {
-			tf.assignments[ident.Name] = n.X
+			tf.currentScope.assignments[ident.Name] = n.X
 		}
 	}
 }
 
 func (tf *testFinder) handleFuncDecl(n *ast.FuncDecl) *TestInfo {
-	// New function, clear assignments.
-	// TODO: If subtest is using a variable from an outer scope, information is
-	// lost.
-	tf.assignments = make(map[string]ast.Node)
+	// New function, push a new scope to isolate assignments.
+	tf.pushScope()
 
 	if n.Name == nil || !strings.HasPrefix(n.Name.Name, "Test") || !isTestFunction(n) {
 		return nil
@@ -467,7 +512,7 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 
 	fieldName := selector.Sel.Name
 
-	rangeExpr, ok := tf.assignments[varIdent.Name]
+	rangeExpr, ok := tf.lookupAssignment(varIdent.Name)
 	if !ok {
 		return nil
 	}
@@ -475,7 +520,7 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 	sliceExpr := rangeExpr
 	if ident, ok := rangeExpr.(*ast.Ident); ok {
 		// Ranging over a variable, e.g. `for _, c := range cases`.
-		sliceExpr, ok = tf.assignments[ident.Name]
+		sliceExpr, ok = tf.lookupAssignment(ident.Name)
 		if !ok {
 			return nil
 		}
@@ -486,10 +531,18 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 		return nil
 	}
 
+	// Try to extract field positions from the type 🤞.
+	// TODO: introducing types would make this more easier, but it would be
+	// slower.
+	var fieldPositions map[string]int
+	if compLit.Type != nil {
+		fieldPositions = tf.extractStructFieldPositions(compLit.Type)
+	}
+
 	var tableTests []tableTestInfo
 	for _, elt := range compLit.Elts {
 		if structLit, ok := elt.(*ast.CompositeLit); ok {
-			if name := tf.extractFieldValue(structLit, fieldName); name != "" {
+			if name := tf.extractFieldValue(structLit, fieldName, fieldPositions); name != "" {
 				start := tf.fset.Position(structLit.Pos())
 				end := tf.fset.Position(structLit.End())
 				tableTests = append(tableTests, tableTestInfo{
@@ -504,7 +557,39 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 	return tableTests
 }
 
-func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName string) string {
+func (tf *testFinder) extractStructFieldPositions(typeExpr ast.Expr) map[string]int {
+	positions := make(map[string]int)
+
+	// []struct{...}
+	arr, ok := typeExpr.(*ast.ArrayType)
+	if !ok {
+		return positions
+	}
+
+	structType, ok := arr.Elt.(*ast.StructType)
+	if !ok {
+		return positions
+	}
+
+	var pos int
+	for _, field := range structType.Fields.List {
+		pos++
+
+		if len(field.Names) == 0 {
+			// Anonymous.
+			continue
+		}
+
+		for _, name := range field.Names {
+			positions[name.Name] = pos
+		}
+	}
+
+	return positions
+}
+
+func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName string, fieldPositions map[string]int) string {
+	// Try to find named field (e.g., {name: "test"})
 	for _, elt := range structLit.Elts {
 		kvExpr, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
@@ -520,6 +605,41 @@ func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName s
 			return strings.Trim(lit.Value, "\"'`")
 		}
 	}
+
+	if len(structLit.Elts) == 0 {
+		return ""
+	}
+
+	// Try positional initialization.
+	allPositional := true
+	for _, elt := range structLit.Elts {
+		if _, ok := elt.(*ast.KeyValueExpr); ok {
+			allPositional = false
+			break
+		}
+	}
+
+	if !allPositional {
+		return ""
+	}
+
+	if fieldPositions != nil {
+		if pos, ok := fieldPositions[fieldName]; ok && pos < len(structLit.Elts) {
+			if lit, ok := structLit.Elts[pos].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				return strings.Trim(lit.Value, "\"'`")
+			}
+		}
+
+		return ""
+	}
+
+	// If the first field is a string literal, it's likely the
+	// field we're looking for; test names are hopefully always
+	// strings.
+	if lit, ok := structLit.Elts[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+		return strings.Trim(lit.Value, "\"'`")
+	}
+
 	return ""
 }
 
@@ -563,13 +683,13 @@ func (tf *testFinder) createGeneratedSubTest(arg ast.Expr, parentTest *TestInfo,
 	fullDisplayName := fmt.Sprintf("%s/%s", parentTest.FullDisplayName, subtestName)
 
 	return &TestInfo{
-		Name:             subtestName,
-		DisplayName:      subtestName,
-		FullName:         fullName,
-		FullDisplayName:  fullDisplayName,
-		Package:          tf.pkgName,
-		Directory:        tf.directory,
-		File:             filename,
+		Name:            subtestName,
+		DisplayName:     subtestName,
+		FullName:        fullName,
+		FullDisplayName: fullDisplayName,
+		Package:         tf.pkgName,
+		Directory:       tf.directory,
+		File:            filename,
 		Range: SourceRange{
 			Start: SourcePosition{
 				Line:   start.Line,
