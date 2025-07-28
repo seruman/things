@@ -113,7 +113,7 @@ func realmain(
 	}
 
 	if flagFormat == "" {
-		flagFormat = "{{.FullName}}"
+		flagFormat = "{{.FullDisplayName}}"
 	}
 
 	tmpl, err := template.New("format").Parse(flagFormat)
