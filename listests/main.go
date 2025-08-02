@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -102,8 +101,6 @@ func realmain(
 		return err
 	}
 
-	slices.SortStableFunc(tests, testInfoCmp)
-
 	if flagVimgrep {
 		if flagFormat != "" {
 			return fmt.Errorf("cannot use -vimgrep and -format together")
@@ -121,7 +118,7 @@ func realmain(
 		return fmt.Errorf("failed to parse format: %w", err)
 	}
 
-	for test := range iterTests(tests) {
+	for test := range tests {
 		cwd, _ := os.Getwd()
 		relativePath, err := filepath.Rel(cwd, test.File)
 		if err != nil {
@@ -150,7 +147,6 @@ func realmain(
 		if _, err := fmt.Fprintln(stdout, buf.String()); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
-
 	}
 
 	return nil
@@ -186,9 +182,6 @@ type TestInfo struct {
 
 	// Whether it's a subtest or top-level
 	IsSubtest bool `json:"isSubtest"`
-
-	// Subtests
-	SubTests []*TestInfo `json:"subTests,omitzero"`
 }
 
 type SourceRange struct {
@@ -207,7 +200,7 @@ func findTestsInPackages(
 	patterns []string,
 	buildTags []string,
 	logger func(string, ...any),
-) ([]*TestInfo, error) {
+) (iter.Seq[*TestInfo], error) {
 	buildFlags := []string{}
 	if len(buildTags) > 0 {
 		buildFlags = append(buildFlags, fmt.Sprintf("-tags=%s", strings.Join(buildTags, " ")))
@@ -231,40 +224,43 @@ func findTestsInPackages(
 		return nil, fmt.Errorf("no packages found")
 	}
 
-	var allTests []*TestInfo
-	for _, pkg := range pkgs {
-		if pkg.ForTest == "" {
-			continue
-		}
+	return func(yield func(*TestInfo) bool) {
+		for _, pkg := range pkgs {
+			if pkg.ForTest == "" {
+				continue
+			}
 
-		var testFiles []*ast.File
-		for _, file := range pkg.Syntax {
-			filename := pkg.Fset.Position(file.Pos()).Filename
-			if strings.HasSuffix(filename, "_test.go") {
-				testFiles = append(testFiles, file)
+			var testFiles []*ast.File
+			for _, file := range pkg.Syntax {
+				filename := pkg.Fset.Position(file.Pos()).Filename
+				if strings.HasSuffix(filename, "_test.go") {
+					testFiles = append(testFiles, file)
+				}
+			}
+
+			if len(testFiles) == 0 {
+				continue
+			}
+
+			// TODO: To not get panic when running on for file(s) not in a module.
+			pkgPath := pkg.PkgPath
+			packageName := pkgPath
+			if pkg.Module != nil {
+				moduleName := pkg.Module.Path
+				packageName = strings.TrimPrefix(pkgPath, moduleName+"/")
+			}
+			directory := pkg.Dir
+
+			inspect := inspector.New(testFiles)
+
+			finder := newTestFinder(pkg.Fset, packageName, directory, logger)
+			for test := range finder.find(inspect) {
+				if !yield(test) {
+					return
+				}
 			}
 		}
-
-		if len(testFiles) == 0 {
-			continue
-		}
-
-		// TODO: To not get panic when running on for file(s) not in a module.
-		pkgPath := pkg.PkgPath
-		packageName := pkgPath
-		if pkg.Module != nil {
-			moduleName := pkg.Module.Path
-			packageName = strings.TrimPrefix(pkgPath, moduleName+"/")
-		}
-		directory := pkg.Dir
-
-		inspect := inspector.New(testFiles)
-
-		finder := newTestFinder(pkg.Fset, packageName, directory, logger)
-		allTests = append(allTests, finder.find(inspect)...)
-	}
-
-	return allTests, nil
+	}, nil
 }
 
 type tableTestInfo struct {
@@ -273,10 +269,7 @@ type tableTestInfo struct {
 	end   token.Position
 }
 
-type scope struct {
-	assignments map[string]ast.Node
-	parent      *scope
-}
+type scope map[string]ast.Node
 
 type testFinder struct {
 	fset      *token.FileSet
@@ -284,116 +277,161 @@ type testFinder struct {
 	directory string
 	logger    func(string, ...any)
 
-	testMap      map[ast.Node]*TestInfo
-	currentScope *scope
+	scopeStack []scope
+	testStack  []*TestInfo
 }
 
 func newTestFinder(fset *token.FileSet, pkgName, dir string, logger func(string, ...any)) *testFinder {
 	return &testFinder{
-		fset:      fset,
-		pkgName:   pkgName,
-		directory: dir,
-		logger:    logger,
-		testMap:   make(map[ast.Node]*TestInfo),
-		currentScope: &scope{
-			assignments: make(map[string]ast.Node),
-			parent:      nil,
-		},
+		fset:       fset,
+		pkgName:    pkgName,
+		directory:  dir,
+		logger:     logger,
+		scopeStack: []scope{make(scope)},
 	}
 }
 
 func (tf *testFinder) pushScope() {
-	newScope := &scope{
-		assignments: make(map[string]ast.Node),
-		parent:      tf.currentScope,
+	tf.scopeStack = append(tf.scopeStack, make(scope))
+}
+
+func (tf *testFinder) pushTest(test *TestInfo) {
+	tf.testStack = append(tf.testStack, test)
+}
+
+func (tf *testFinder) popTest() {
+	if len(tf.testStack) > 0 {
+		tf.testStack = tf.testStack[:len(tf.testStack)-1]
 	}
-	tf.currentScope = newScope
+}
+
+func (tf *testFinder) currentTest() *TestInfo {
+	if len(tf.testStack) > 0 {
+		return tf.testStack[len(tf.testStack)-1]
+	}
+	return nil
 }
 
 func (tf *testFinder) popScope() {
-	if tf.currentScope.parent != nil {
-		tf.currentScope = tf.currentScope.parent
+	if len(tf.scopeStack) > 1 {
+		tf.scopeStack = tf.scopeStack[:len(tf.scopeStack)-1]
 	}
 }
 
-func (tf *testFinder) lookupAssignment(name string) (ast.Node, bool) {
-	scope := tf.currentScope
-	for scope != nil {
-		if node, ok := scope.assignments[name]; ok {
-			return node, true
+func (tf *testFinder) find(inspect *inspector.Inspector) iter.Seq[*TestInfo] {
+	return func(yield func(*TestInfo) bool) {
+		nodeFilter := []ast.Node{
+			(*ast.FuncDecl)(nil),
+			(*ast.FuncLit)(nil),
+			(*ast.CallExpr)(nil),
+			(*ast.AssignStmt)(nil),
+			(*ast.RangeStmt)(nil),
 		}
-		scope = scope.parent
-	}
-	return nil, false
-}
 
-func (tf *testFinder) find(inspect *inspector.Inspector) []*TestInfo {
-	var allTests []*TestInfo
+		shouldStop := false
 
-	nodeFilter := []ast.Node{
-		(*ast.FuncDecl)(nil),
-		(*ast.FuncLit)(nil),
-		(*ast.CallExpr)(nil),
-		(*ast.AssignStmt)(nil),
-		(*ast.RangeStmt)(nil),
-	}
+		// TODO: Tracking these two is quite shit tbh.
+		runCallbacks := make(map[*ast.FuncLit]*TestInfo)
+		funcLitHasTest := make(map[*ast.FuncLit]struct{})
 
-	inspect.WithStack(nodeFilter, func(node ast.Node, push bool, stack []ast.Node) bool {
-		switch n := node.(type) {
-		case *ast.FuncDecl:
-			if push {
-				if test := tf.handleFuncDecl(n); test != nil {
-					allTests = append(allTests, test)
+		inspect.WithStack(nodeFilter, func(node ast.Node, push bool, stack []ast.Node) bool {
+			if shouldStop {
+				return false
+			}
+
+			switch n := node.(type) {
+			case *ast.FuncDecl:
+				if push {
+					if test := tf.handleFuncDecl(n); test != nil {
+						if !yield(test) {
+							shouldStop = true
+							return false
+						}
+
+						tf.pushTest(test)
+					}
+				} else {
+					tf.popScope()
+					if len(tf.testStack) > 0 {
+						tf.popTest()
+					}
 				}
-			} else {
-				tf.popScope()
+
+			case *ast.FuncLit:
+				if push {
+					if test, ok := runCallbacks[n]; ok {
+						tf.pushScope()
+						tf.pushTest(test)
+						funcLitHasTest[n] = struct{}{}
+						delete(runCallbacks, n)
+					} else {
+						tf.pushScope()
+					}
+				} else {
+					tf.popScope()
+					if _, ok := funcLitHasTest[n]; ok {
+						tf.popTest()
+						delete(funcLitHasTest, n)
+					}
+				}
+
+			case *ast.CallExpr:
+				if push {
+					// TODO: returned subtest just used as a signal, just a
+					// bool should be OK.
+					subTests, funcLitTest := tf.handleCallExpr(n, yield)
+					if !subTests {
+						shouldStop = true
+						return false
+					}
+
+					if funcLitTest != nil {
+						if funcLit, ok := n.Args[1].(*ast.FuncLit); ok {
+							runCallbacks[funcLit] = funcLitTest
+						}
+					}
+				}
+
+			case *ast.AssignStmt:
+				if push {
+					tf.handleAssignStmt(n)
+				}
+			case *ast.RangeStmt:
+				if push {
+					tf.handleRangeStmt(n)
+				}
 			}
 
-		case *ast.FuncLit:
-			if push {
-				tf.pushScope()
-			} else {
-				tf.popScope()
-			}
-		case *ast.CallExpr:
-			if push {
-				tf.handleCallExpr(n, stack)
-			}
-		case *ast.AssignStmt:
-			if push {
-				tf.handleAssignStmt(n)
-			}
-		case *ast.RangeStmt:
-			if push {
-				tf.handleRangeStmt(n)
-			}
-		}
-
-		return true
-	})
-
-	return allTests
+			return true
+		})
+	}
 }
 
 func (tf *testFinder) handleAssignStmt(n *ast.AssignStmt) {
-	// cases := []struct{...}
 	if len(n.Lhs) == 1 && len(n.Rhs) == 1 {
 		if ident, ok := n.Lhs[0].(*ast.Ident); ok {
-			tf.currentScope.assignments[ident.Name] = n.Rhs[0]
+			if len(tf.scopeStack) > 0 {
+				tf.scopeStack[len(tf.scopeStack)-1][ident.Name] = n.Rhs[0]
+			}
 		}
 	}
 }
 
 func (tf *testFinder) handleRangeStmt(n *ast.RangeStmt) {
+	if len(tf.scopeStack) == 0 {
+		return
+	}
+	currentScope := tf.scopeStack[len(tf.scopeStack)-1]
+
 	if n.Key != nil {
 		if ident, ok := n.Key.(*ast.Ident); ok {
-			tf.currentScope.assignments[ident.Name] = n.X
+			currentScope[ident.Name] = n.X
 		}
 	}
 
 	if n.Value != nil {
 		if ident, ok := n.Value.(*ast.Ident); ok {
-			tf.currentScope.assignments[ident.Name] = n.X
+			currentScope[ident.Name] = n.X
 		}
 	}
 }
@@ -432,35 +470,38 @@ func (tf *testFinder) handleFuncDecl(n *ast.FuncDecl) *TestInfo {
 		},
 		HasGeneratedName: false,
 		IsSubtest:        false,
-		SubTests:         nil,
 	}
 
-	tf.testMap[n] = test
 	return test
 }
 
-func (tf *testFinder) handleCallExpr(n *ast.CallExpr, stack []ast.Node) {
+func (tf *testFinder) handleCallExpr(n *ast.CallExpr, yield func(*TestInfo) bool) (bool, *TestInfo) {
 	if !tf.isRunCall(n) {
-		return
+		return true, nil
 	}
 
-	parentTest := tf.findParentTest(stack)
-	if parentTest == nil {
-		return
+	parent := tf.currentTest()
+	if parent == nil {
+		return true, nil
 	}
 
-	subTests := tf.createSubTests(n, parentTest)
+	subTests := tf.createSubTests(n, parent)
 	if len(subTests) == 0 {
-		return
+		return true, nil
 	}
 
-	parentTest.SubTests = append(parentTest.SubTests, subTests...)
-
-	// Map the function literal body to the last subtest so nested t.Run calls can
-	// find it. For table tests, all subtests share the same t.Run call.
-	if funcLit, ok := n.Args[1].(*ast.FuncLit); ok && funcLit.Body != nil {
-		tf.testMap[funcLit.Body] = subTests[len(subTests)-1]
+	for _, subTest := range subTests {
+		if !yield(subTest) {
+			return false, nil
+		}
 	}
+
+	// TODO:
+	if funcLit, ok := n.Args[1].(*ast.FuncLit); ok && funcLit.Body != nil && len(subTests) > 0 {
+		return true, subTests[len(subTests)-1]
+	}
+
+	return true, nil
 }
 
 func (tf *testFinder) isRunCall(n *ast.CallExpr) bool {
@@ -468,16 +509,7 @@ func (tf *testFinder) isRunCall(n *ast.CallExpr) bool {
 	return ok && selExpr.Sel.Name == "Run" && len(n.Args) >= 2
 }
 
-func (tf *testFinder) findParentTest(stack []ast.Node) *TestInfo {
-	for i := len(stack) - 1; i >= 0; i-- {
-		if test, exists := tf.testMap[stack[i]]; exists {
-			return test
-		}
-	}
-	return nil
-}
-
-func (tf *testFinder) createSubTests(n *ast.CallExpr, parentTest *TestInfo) []*TestInfo {
+func (tf *testFinder) createSubTests(n *ast.CallExpr, parent *TestInfo) []*TestInfo {
 	filename := tf.fset.Position(n.Pos()).Filename
 	start := tf.fset.Position(n.Pos())
 	end := tf.fset.Position(n.End())
@@ -486,28 +518,28 @@ func (tf *testFinder) createSubTests(n *ast.CallExpr, parentTest *TestInfo) []*T
 	case *ast.BasicLit:
 		if arg.Kind == token.STRING {
 			subtestName := strings.Trim(arg.Value, "\"'`")
-			subTest := tf.createNamedSubTest(subtestName, parentTest, filename, start, end)
+			subTest := tf.createNamedSubTest(subtestName, parent, filename, start, end)
 			return []*TestInfo{subTest}
 		}
 	case *ast.SelectorExpr:
-		if tableTests := tf.extractTableTestNames(arg); len(tableTests) > 0 {
+		if tableTests := extractTableTestNames(arg, tf.scopeStack, tf.fset); len(tableTests) > 0 {
 			var subTests []*TestInfo
 			for _, tt := range tableTests {
-				subTest := tf.createNamedSubTest(tt.name, parentTest, filename, tt.start, tt.end)
+				subTest := tf.createNamedSubTest(tt.name, parent, filename, tt.start, tt.end)
 				subTests = append(subTests, subTest)
 			}
 			return subTests
 		}
-		subTest := tf.createGeneratedSubTest(arg, parentTest, filename, start, end)
+		subTest := tf.createGeneratedSubTest(arg, parent, filename, start, end)
 		return []*TestInfo{subTest}
 	default:
-		subTest := tf.createGeneratedSubTest(arg, parentTest, filename, start, end)
+		subTest := tf.createGeneratedSubTest(arg, parent, filename, start, end)
 		return []*TestInfo{subTest}
 	}
 	return nil
 }
 
-func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableTestInfo {
+func extractTableTestNames(selector *ast.SelectorExpr, scopeStack []scope, fset *token.FileSet) []tableTestInfo {
 	// Get the variable name e.g. "c" from `c.name`.
 	varIdent, ok := selector.X.(*ast.Ident)
 	if !ok {
@@ -516,16 +548,15 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 
 	fieldName := selector.Sel.Name
 
-	rangeExpr, ok := tf.lookupAssignment(varIdent.Name)
-	if !ok {
+	rangeExpr := lookupInScope(varIdent.Name, scopeStack)
+	if rangeExpr == nil {
 		return nil
 	}
 
 	sliceExpr := rangeExpr
 	if ident, ok := rangeExpr.(*ast.Ident); ok {
-		// Ranging over a variable, e.g. `for _, c := range cases`.
-		sliceExpr, ok = tf.lookupAssignment(ident.Name)
-		if !ok {
+		sliceExpr = lookupInScope(ident.Name, scopeStack)
+		if sliceExpr == nil {
 			return nil
 		}
 	}
@@ -540,15 +571,15 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 	// slower.
 	var fieldPositions map[string]int
 	if compLit.Type != nil {
-		fieldPositions = tf.extractStructFieldPositions(compLit.Type)
+		fieldPositions = extractStructFieldPositions(compLit.Type)
 	}
 
 	var tableTests []tableTestInfo
 	for _, elt := range compLit.Elts {
 		if structLit, ok := elt.(*ast.CompositeLit); ok {
-			if name := tf.extractFieldValue(structLit, fieldName, fieldPositions); name != "" {
-				start := tf.fset.Position(structLit.Pos())
-				end := tf.fset.Position(structLit.End())
+			if name := extractFieldValue(structLit, fieldName, fieldPositions); name != "" {
+				start := fset.Position(structLit.Pos())
+				end := fset.Position(structLit.End())
 				tableTests = append(tableTests, tableTestInfo{
 					name:  name,
 					start: start,
@@ -561,7 +592,16 @@ func (tf *testFinder) extractTableTestNames(selector *ast.SelectorExpr) []tableT
 	return tableTests
 }
 
-func (tf *testFinder) extractStructFieldPositions(typeExpr ast.Expr) map[string]int {
+func lookupInScope(name string, scopeStack []scope) ast.Node {
+	for i := len(scopeStack) - 1; i >= 0; i-- {
+		if node, ok := scopeStack[i][name]; ok {
+			return node
+		}
+	}
+	return nil
+}
+
+func extractStructFieldPositions(typeExpr ast.Expr) map[string]int {
 	positions := make(map[string]int)
 
 	// []struct{...}
@@ -575,7 +615,8 @@ func (tf *testFinder) extractStructFieldPositions(typeExpr ast.Expr) map[string]
 		return positions
 	}
 
-	for pos, field := range structType.Fields.List {
+	pos := 0
+	for _, field := range structType.Fields.List {
 		if len(field.Names) == 0 {
 			// Anonymous field.
 			pos++
@@ -592,7 +633,7 @@ func (tf *testFinder) extractStructFieldPositions(typeExpr ast.Expr) map[string]
 	return positions
 }
 
-func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName string, fieldPositions map[string]int) string {
+func extractFieldValue(structLit *ast.CompositeLit, fieldName string, fieldPositions map[string]int) string {
 	// Try to find named field (e.g., {name: "test"})
 	for _, elt := range structLit.Elts {
 		kvExpr, ok := elt.(*ast.KeyValueExpr)
@@ -647,18 +688,18 @@ func (tf *testFinder) extractFieldValue(structLit *ast.CompositeLit, fieldName s
 	return ""
 }
 
-func (tf *testFinder) createNamedSubTest(name string, parentTest *TestInfo, filename string, start, end token.Position) *TestInfo {
+func (tf *testFinder) createNamedSubTest(name string, parent *TestInfo, filename string, start, end token.Position) *TestInfo {
 	sanitizedName := rewriteSubTestName(name)
-	fullName := parentTest.FullName + "/" + name
-	sanitizedFullName := parentTest.FullName + "/" + sanitizedName
+	fullName := parent.FullName + "/" + name
+	sanitizedFullName := parent.FullDisplayName + "/" + sanitizedName
 
 	return &TestInfo{
 		Name:            name,
 		DisplayName:     sanitizedName,
 		FullName:        fullName,
 		FullDisplayName: sanitizedFullName,
-		Package:         tf.pkgName,
-		Directory:       tf.directory,
+		Package:         parent.Package,
+		Directory:       parent.Directory,
 		File:            filename,
 		Range: SourceRange{
 			Start: SourcePosition{
@@ -675,7 +716,7 @@ func (tf *testFinder) createNamedSubTest(name string, parentTest *TestInfo, file
 	}
 }
 
-func (tf *testFinder) createGeneratedSubTest(arg ast.Expr, parentTest *TestInfo, filename string, start, end token.Position) *TestInfo {
+func (tf *testFinder) createGeneratedSubTest(arg ast.Expr, parent *TestInfo, filename string, start, end token.Position) *TestInfo {
 	var buf bytes.Buffer
 	err := printer.Fprint(&buf, tf.fset, arg)
 	if err != nil {
@@ -683,16 +724,16 @@ func (tf *testFinder) createGeneratedSubTest(arg ast.Expr, parentTest *TestInfo,
 		return nil
 	}
 	subtestName := fmt.Sprintf("<%s>", strings.TrimSpace(buf.String()))
-	fullName := fmt.Sprintf("%s/%s", parentTest.FullName, subtestName)
-	fullDisplayName := fmt.Sprintf("%s/%s", parentTest.FullDisplayName, subtestName)
+	fullName := fmt.Sprintf("%s/%s", parent.FullName, subtestName)
+	fullDisplayName := fmt.Sprintf("%s/%s", parent.FullDisplayName, subtestName)
 
 	return &TestInfo{
 		Name:            subtestName,
 		DisplayName:     subtestName,
 		FullName:        fullName,
 		FullDisplayName: fullDisplayName,
-		Package:         tf.pkgName,
-		Directory:       tf.directory,
+		Package:         parent.Package,
+		Directory:       parent.Directory,
 		File:            filename,
 		Range: SourceRange{
 			Start: SourcePosition{
@@ -733,22 +774,6 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 	}
 
 	return false
-}
-
-func iterTests(tests []*TestInfo) iter.Seq[*TestInfo] {
-	return func(yield func(*TestInfo) bool) {
-		// TODO: mutates
-		slices.SortStableFunc(tests, testInfoCmp)
-
-		for _, test := range tests {
-			if !yield(test) {
-				return
-			}
-			if len(test.SubTests) > 0 {
-				iterTests(test.SubTests)(yield)
-			}
-		}
-	}
 }
 
 // https://github.com/golang/go/blob/master/src/testing/match.go#L282-L298
