@@ -12,6 +12,7 @@ import (
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/golang"
+	"github.com/smacker/go-tree-sitter/hcl"
 	"github.com/smacker/go-tree-sitter/java"
 	"github.com/smacker/go-tree-sitter/javascript"
 	"github.com/smacker/go-tree-sitter/python"
@@ -94,6 +95,8 @@ func realMain(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.
 		lang = typescript.GetLanguage()
 	case "tsx":
 		lang = tsx.GetLanguage()
+	case "hcl":
+		lang = hcl.GetLanguage()
 	default:
 		return fmt.Errorf("unsupported language: %s", flagLang)
 	}
