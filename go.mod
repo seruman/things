@@ -11,12 +11,11 @@ require (
 )
 
 require (
-	bou.ke/babelfish v0.0.0-00010101000000-000000000000
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.16.0
 	github.com/go-git/go-git/v5 v5.11.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-retryablehttp v0.7.4
 	github.com/ijt/go-anytime v1.9.2
@@ -25,10 +24,11 @@ require (
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/prometheus v0.53.0
+	github.com/seruman/babelfish v0.0.0-20250813110124-a5d055489861
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	golang.org/x/tools v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
-	mvdan.cc/sh/v3 v3.10.0
+	mvdan.cc/sh/v3 v3.12.0
 )
 
 require (
@@ -70,9 +70,7 @@ require (
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
-
-replace bou.ke/babelfish => github.com/seruman/babelfish v0.0.0-20250117190751-f024a928842f

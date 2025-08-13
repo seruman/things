@@ -13,10 +13,11 @@ import (
 	"os/signal"
 	"strings"
 
-	"bou.ke/babelfish/translate"
 	"github.com/itchyny/zshhist-go"
 	"gopkg.in/yaml.v3"
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/seruman/babelfish/translate"
 )
 
 func main() {
