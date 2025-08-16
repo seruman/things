@@ -1,4 +1,4 @@
-module github.com/seruman/things
+module code.selman.me/things
 
 go 1.24.1
 
