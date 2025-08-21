@@ -57,6 +57,7 @@ func realMain(
 			scanner := bufio.NewScanner(stdin)
 			for scanner.Scan() {
 				line := scanner.Text()
+
 				version, err := semver.NewVersion(line)
 				if err != nil {
 					fmt.Fprintf(stderr, "%v: %v\n", err, line)
@@ -72,7 +73,7 @@ func realMain(
 				case "major":
 					newVersion = version.IncMajor()
 				case "prerelease":
-					bumped, err := bumpPrerelease(version)
+					bumped, err := bumpPrerelease(*version)
 					if err != nil {
 						fmt.Fprintf(stderr, "%v: %v\n", err, line)
 						continue
@@ -80,7 +81,8 @@ func realMain(
 					newVersion = *bumped
 				}
 
-				fmt.Fprintln(stdout, newVersion.String())
+				output := newVersion.Original()
+				fmt.Fprintln(stdout, output)
 			}
 
 			return scanner.Err()
@@ -112,33 +114,33 @@ func realMain(
 	return rootCmd.ParseAndRun(ctx, args[1:])
 }
 
-func bumpPrerelease(v *semver.Version) (*semver.Version, error) {
+func bumpPrerelease(v semver.Version) (*semver.Version, error) {
 	prerelease := v.Prerelease()
 
-	if prerelease == "" && v.Metadata() == "" {
-		// If no prerelease and no metadata, start a new prerelease cycle.
-		// Increment patch and add -alpha.0.
-		newVer := v.IncPatch()
-		withPre, _ := newVer.SetPrerelease("alpha.0")
-		return &withPre, nil
+	if prerelease == "" {
+		n := v.IncPatch()
+		n, _ = n.SetPrerelease("alpha.0")
+		return &n, nil
 	}
 
-	if prerelease == "" {
-		return nil, fmt.Errorf("version has metadata but no prerelease to bump")
+	e, err := v.SetPrerelease("")
+	if err != nil {
+		return nil, fmt.Errorf("failed to reset prerelease: %w", err)
+	}
+
+	ee, err := e.SetMetadata("")
+	if err != nil {
+		return nil, fmt.Errorf("failed to reset metadata: %w", err)
 	}
 
 	re := regexp.MustCompile(`^(alpha|beta|rc)(\.)?(\d+)$`)
 	if matches := re.FindStringSubmatch(prerelease); matches != nil {
 		prefix := matches[1]
-		separator := matches[2] // Will be "." or empty
+		separator := matches[2]
 		num, _ := strconv.Atoi(matches[3])
 		newPre := fmt.Sprintf("%s%s%d", prefix, separator, num+1)
-		newVer, _ := semver.NewVersion(fmt.Sprintf("%d.%d.%d-%s", v.Major(), v.Minor(), v.Patch(), newPre))
-		if v.Metadata() != "" {
-			withMeta, _ := newVer.SetMetadata(v.Metadata())
-			newVer = &withMeta
-		}
-		return newVer, nil
+		nv, _ := semver.NewVersion(fmt.Sprintf("%s-%s", ee.Original(), newPre))
+		return nv, nil
 	}
 
 	return nil, fmt.Errorf("prerelease '%s' does not match convention (alpha.N, beta.N, rc.N, alphaN, betaN, or rcN)", prerelease)
