@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/dockerfile"
 	"github.com/smacker/go-tree-sitter/golang"
 	"github.com/smacker/go-tree-sitter/hcl"
 	"github.com/smacker/go-tree-sitter/java"
@@ -97,6 +98,8 @@ func realMain(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.
 		lang = tsx.GetLanguage()
 	case "hcl":
 		lang = hcl.GetLanguage()
+	case "dockerfile":
+		lang = dockerfile.GetLanguage()
 	default:
 		return fmt.Errorf("unsupported language: %s", flagLang)
 	}
