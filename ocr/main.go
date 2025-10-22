@@ -52,9 +52,19 @@ func realMain(args []string, w io.Writer) error {
 		handler := vision.NewImageRequestHandler().InitWithDataOptions(img, nil)
 
 		var errObj foundation.Error
-		handler.PerformRequestsError([]vision.IRequest{req}, unsafe.Pointer(&errObj))
+		success := handler.PerformRequestsError([]vision.IRequest{req}, unsafe.Pointer(&errObj))
 		if !errObj.IsNil() {
 			ocrErr = errors.New(errObj.Description())
+			return
+		}
+		if !success {
+			ocrErr = errors.New("couldn't recognize text")
+			return
+		}
+
+		results := objc.Call[objc.Object](req, objc.Sel("results"))
+		count := objc.Call[uint](results, objc.Sel("count"))
+		if count == 0 {
 			return
 		}
 
