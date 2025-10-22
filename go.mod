@@ -23,6 +23,7 @@ require (
 	github.com/mergestat/timediff v0.0.3
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/olekukonko/tablewriter v0.0.5
+	github.com/progrium/darwinkit v0.5.0
 	github.com/prometheus/prometheus v0.53.0
 	github.com/seruman/babelfish v0.0.0-20250813110124-a5d055489861
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
