@@ -53,7 +53,7 @@ func realMain(
 		return err
 	}
 
-	fmt.Fprintln(out, total)
+	fmt.Fprintln(out, strconv.FormatFloat(total, 'f', -1, 64))
 
 	return nil
 }
