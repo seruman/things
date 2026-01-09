@@ -20,6 +20,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/ijt/go-anytime v1.9.2
 	github.com/itchyny/zshhist-go v0.0.0-20240503051215-d59e3c0c4c2a
+	github.com/lnquy/cron v1.1.1
 	github.com/mergestat/timediff v0.0.3
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/olekukonko/tablewriter v0.0.5
