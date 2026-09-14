@@ -56,7 +56,10 @@ func realMain(
 		return err
 	}
 
-	r, err := git.PlainOpenWithOptions(cwd, &git.PlainOpenOptions{DetectDotGit: true})
+	r, err := git.PlainOpenWithOptions(cwd, &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
 	if err != nil {
 		return err
 	}
