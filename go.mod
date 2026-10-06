@@ -1,17 +1,11 @@
 module code.selman.me/things
 
-go 1.24.1
-
-require (
-	github.com/apognu/gocal v0.9.0
-	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
-	github.com/nlopes/slack v0.6.0
-	github.com/peterbourgon/ff/v3 v3.1.2
-	github.com/pkg/errors v0.9.1 // indirect
-)
+go 1.27.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/apognu/gocal v0.9.0
+	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.16.0
 	github.com/go-git/go-git/v5 v5.11.0
@@ -22,13 +16,16 @@ require (
 	github.com/itchyny/zshhist-go v0.0.0-20240503051215-d59e3c0c4c2a
 	github.com/lnquy/cron v1.1.1
 	github.com/mergestat/timediff v0.0.3
+	github.com/nlopes/slack v0.6.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/olekukonko/tablewriter v0.0.5
+	github.com/peterbourgon/ff/v3 v3.1.2
 	github.com/progrium/darwinkit v0.5.0
 	github.com/prometheus/prometheus v0.303.1
 	github.com/seruman/babelfish v0.0.0-20250813110124-a5d055489861
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
-	golang.org/x/mod v0.32.0
+	github.com/twmb/franz-go v1.20.6
+	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260301060857-bb3b3fbfb3de
 	golang.org/x/tools v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 	mvdan.cc/sh/v3 v3.12.0
@@ -99,6 +96,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/alertmanager v0.28.0 // indirect
 	github.com/prometheus/client_golang v1.21.0-rc.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
@@ -108,8 +106,6 @@ require (
 	github.com/rivo/uniseg v0.1.0 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/skeema/knownhosts v1.2.1 // indirect
-	github.com/twmb/franz-go v1.20.6 // indirect
-	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260301060857-bb3b3fbfb3de // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.12.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.mongodb.org/mongo-driver v1.14.0 // indirect
@@ -120,6 +116,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/mod v0.32.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
