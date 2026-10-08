@@ -32,7 +32,7 @@ func realMain(stdout io.Writer, stderr io.Writer, osargs []string) error {
 	flagLinesPerChunk := fs.Int("l", 10_00_000, "lines per chunk")
 	flagSize := fs.Bool("s", false, "show size in bytes")
 	flagHumanize := fs.Bool("h", false, "show size in human-readable format")
-	flagShowCount := fs.Bool("n", false, "show line count and size")
+	flagShowCount := fs.Bool("n", false, "show line count")
 	flagBufferSizeMB := fs.Int("b", 50, "buffer size in MB")
 
 	if err := fs.Parse(osargs[1:]); err != nil {
@@ -44,6 +44,10 @@ func realMain(stdout io.Writer, stderr io.Writer, osargs []string) error {
 	if len(args) != 1 {
 		fs.Usage()
 		return fmt.Errorf("expected exactly one filepath argument")
+	}
+
+	if *flagLinesPerChunk <= 0 {
+		return fmt.Errorf("lines per chunk (-l) must be positive")
 	}
 
 	filepath := args[0]
@@ -62,26 +66,28 @@ func realMain(stdout io.Writer, stderr io.Writer, osargs []string) error {
 	var chunkStartOffset int64
 	var lineCount int
 	var totalChunks int
+	var lineSize int64
 
 	for {
-		line, err := reader.ReadBytes('\n')
+		fragment, err := reader.ReadSlice('\n')
+		lineSize += int64(len(fragment))
+		if err == bufio.ErrBufferFull {
+			continue
+		}
 		if err != nil && err != io.EOF {
 			return err
 		}
 
-		if len(line) > 0 {
+		if lineSize > 0 {
 			lineCount++
-			currentOffset += int64(len(line))
+			currentOffset += lineSize
+			lineSize = 0
 
 			if lineCount == *flagLinesPerChunk {
 				totalChunks++
 				size := currentOffset - chunkStartOffset
 
 				fmt.Printf("%d", chunkStartOffset)
-
-				if *flagShowCount {
-					fmt.Printf(" %d", lineCount)
-				}
 
 				if *flagSize {
 					sizeStr := fmt.Sprintf("%d", size)
@@ -91,7 +97,10 @@ func realMain(stdout io.Writer, stderr io.Writer, osargs []string) error {
 					fmt.Printf(" %s", sizeStr)
 				}
 
-				fmt.Printf(" %d lines\n", lineCount)
+				if *flagShowCount {
+					fmt.Printf(" %d lines", lineCount)
+				}
+				fmt.Println()
 
 				chunkStartOffset = currentOffset
 				lineCount = 0
@@ -110,10 +119,6 @@ func realMain(stdout io.Writer, stderr io.Writer, osargs []string) error {
 
 		fmt.Printf("%d", chunkStartOffset)
 
-		if *flagShowCount {
-			fmt.Printf(" %d", lineCount)
-		}
-
 		if *flagSize {
 			sizeStr := fmt.Sprintf("%d", size)
 			if *flagHumanize {
@@ -122,7 +127,10 @@ func realMain(stdout io.Writer, stderr io.Writer, osargs []string) error {
 			fmt.Printf(" %s", sizeStr)
 		}
 
-		fmt.Printf(" %d lines\n", lineCount)
+		if *flagShowCount {
+			fmt.Printf(" %d lines", lineCount)
+		}
+		fmt.Println()
 	}
 
 	fmt.Fprintf(stderr, "Total chunks: %d\n", totalChunks)
